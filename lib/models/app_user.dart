@@ -34,4 +34,33 @@ class AppUser {
     required this.email,
     required this.role,
   });
+
+  factory AppUser.fromMap(String id, Map<String, dynamic> map) {
+    return AppUser(
+      id: id,
+      name: (map['name'] ?? '') as String,
+      email: (map['email'] ?? '') as String,
+      role: UserRole.values.firstWhere(
+        (r) => r.name == map['role'],
+        orElse: () => UserRole.buscador,
+      ),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'email': email,
+      'role': role.name,
+    };
+  }
+
+  AppUser copyWith({String? name, String? email, UserRole? role}) {
+    return AppUser(
+      id: id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      role: role ?? this.role,
+    );
+  }
 }

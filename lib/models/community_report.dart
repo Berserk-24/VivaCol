@@ -35,4 +35,39 @@ class CommunityReport {
     required this.comment,
     required this.date,
   });
+
+  factory CommunityReport.fromMap(String id, Map<String, dynamic> map) {
+    final rawDate = map['date'];
+    return CommunityReport(
+      id: id,
+      propertyId: (map['propertyId'] ?? '') as String,
+      type: ReportType.values.firstWhere(
+        (t) => t.name == map['type'],
+        orElse: () => ReportType.disponible,
+      ),
+      authorName: (map['authorName'] ?? '') as String,
+      comment: (map['comment'] ?? '') as String,
+      date: _parseDate(rawDate),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'propertyId': propertyId,
+      'type': type.name,
+      'authorName': authorName,
+      'comment': comment,
+      'date': date.toIso8601String(),
+    };
+  }
+
+  static DateTime _parseDate(dynamic raw) {
+    if (raw is String) return DateTime.tryParse(raw) ?? DateTime.now();
+    // Firestore Timestamp expone toDate() via duck typing.
+    try {
+      return raw.toDate() as DateTime;
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
 }

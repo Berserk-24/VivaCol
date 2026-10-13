@@ -26,4 +26,18 @@ class AppColors {
   static const Color statusVerifiedBg = Color(0xFFE3F6EC);
   static const Color statusReviewBg = Color(0xFFFBF1D9);
   static const Color statusAlertBg = Color(0xFFFCE5DD);
+
+  // ---- Modo oscuro ----
+  // Inversion de luminosidad y acentos aclarados para contraste
+  // sobre fondos oscuros (paleta azul-verde de marca).
+  static const Color darkInk = Color(0xFFE7F0EE); // texto principal
+  static const Color darkMuted = Color(0xFFAABDBB); // texto secundario
+  static const Color darkBlue = Color(0xFF4C9BD1); // azul de acento
+  static const Color darkBlueDeep = Color(0xFF3973A0); // azul profundo
+  static const Color darkGreen = Color(0xFF4DBB88); // verde de marca
+  static const Color darkGreenSoft = Color(0xFF173E35); // verde suave/fondos
+  static const Color darkBackground = Color(0xFF1A3C53); // fondo de pagina
+  static const Color darkSurface = Color(0xCD2D3A77); // tarjetas (azul alpha)
+  static const Color darkSurfaceSolid = Color(0xFF223052); // superficie opaca
+  static const Color darkLine = Color(0xFF2B4851); // bordes/divisores
 }

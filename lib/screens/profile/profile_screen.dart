@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
-import '../../data/mock_data.dart';
 import '../../models/app_user.dart';
+import '../../models/property.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/theme_provider.dart';
+import '../../services/property_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../widgets/status_badge.dart';
@@ -14,11 +18,14 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = MockData.currentUser;
+    final user = context.watch<AuthProvider>().user;
     final textTheme = Theme.of(context).textTheme;
 
-    final published =
-        MockData.properties.where((p) => p.publisherName == user.name).toList();
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Mi perfil')),
@@ -74,10 +81,90 @@ class ProfileScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            if (published.isEmpty)
-              Text('Aun no tienes publicaciones.', style: textTheme.bodySmall)
-            else
-              ...published.map(
+            _PublishedList(user: user),
+          ] else
+            Text(
+              'Estas buscando vivienda. Explora el listado y reporta '
+              'cambios para ayudar a la comunidad.',
+              style: textTheme.bodyMedium,
+            ),
+          const SizedBox(height: 24),
+          Card(
+            child: SwitchListTile(
+              value: context.watch<ThemeProvider>().isDark,
+              onChanged: (_) => context.read<ThemeProvider>().toggle(),
+              secondary: Icon(
+                context.watch<ThemeProvider>().isDark
+                    ? Icons.dark_mode
+                    : Icons.light_mode,
+              ),
+              title: const Text('Modo oscuro'),
+            ),
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => _confirmSignOut(context),
+            icon: const Icon(Icons.logout),
+            label: const Text('Cerrar sesion'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmSignOut(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cerrar sesion'),
+        content: const Text('Seguro que deseas cerrar sesion?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Cerrar sesion'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      await context.read<AuthProvider>().signOut();
+    }
+  }
+}
+
+/// Lista en tiempo real de las publicaciones del usuario.
+class _PublishedList extends StatelessWidget {
+  final AppUser user;
+
+  const _PublishedList({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final repo = context.read<PropertyRepository>();
+    final textTheme = Theme.of(context).textTheme;
+
+    return StreamBuilder<List<Property>>(
+      stream: repo.watchProperties(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final published =
+            snapshot.data!.where((p) => p.publisherId == user.id).toList();
+        if (published.isEmpty) {
+          return Text('Aun no tienes publicaciones.',
+              style: textTheme.bodySmall);
+        }
+        return Column(
+          children: published
+              .map(
                 (p) => Card(
                   child: ListTile(
                     onTap: () => context.push('/property/${p.id}'),
@@ -88,21 +175,10 @@ class ProfileScreen extends StatelessWidget {
                     trailing: StatusBadge(status: p.status, compact: true),
                   ),
                 ),
-              ),
-          ] else
-            Text(
-              'Estas buscando vivienda. Explora el listado y reporta '
-              'cambios para ayudar a la comunidad.',
-              style: textTheme.bodyMedium,
-            ),
-          const SizedBox(height: 24),
-          OutlinedButton.icon(
-            onPressed: () => context.go('/login'),
-            icon: const Icon(Icons.logout),
-            label: const Text('Cerrar sesion'),
-          ),
-        ],
-      ),
+              )
+              .toList(),
+        );
+      },
     );
   }
 }

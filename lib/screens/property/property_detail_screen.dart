@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
-import '../../data/mock_data.dart';
 import '../../models/community_report.dart';
 import '../../models/property.dart';
 import '../../models/property_status.dart';
 import '../../models/property_type.dart';
+import '../../services/property_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../widgets/status_badge.dart';
+import '../map/property_location_screen.dart';
 
 /// Pantalla de detalle de una propiedad con galeria, informacion,
 /// estado de verificacion e historial de reportes de la comunidad.
@@ -19,19 +21,61 @@ class PropertyDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final property = MockData.properties.firstWhere(
-      (p) => p.id == propertyId,
-      orElse: () => MockData.properties.first,
-    );
+    final repo = context.read<PropertyRepository>();
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Detalle')),
+      body: StreamBuilder<Property?>(
+        stream: repo.watchProperty(propertyId),
+        builder: (context, propSnap) {
+          if (propSnap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final base = propSnap.data;
+          if (base == null) {
+            return const Center(
+              child: Text('La propiedad no esta disponible.'),
+            );
+          }
+          return StreamBuilder<List<CommunityReport>>(
+            stream: repo.watchReports(propertyId),
+            builder: (context, reportSnap) {
+              final property =
+                  base.copyWith(reports: reportSnap.data ?? const []);
+              return _DetailContent(property: property, textTheme: textTheme);
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DetailContent extends StatelessWidget {
+  final Property property;
+  final TextTheme textTheme;
+
+  const _DetailContent({required this.property, required this.textTheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
       bottomNavigationBar: _ContactBar(property: property),
       body: ListView(
         padding: EdgeInsets.zero,
         children: [
-          _Gallery(images: property.imageUrls),
+          Stack(
+            children: [
+              _Gallery(images: property.imageUrls),
+              if (property.hasLocation)
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: _MapPinButton(property: property),
+                ),
+            ],
+          ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -95,28 +139,65 @@ class _Gallery extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: 260,
-      child: PageView.builder(
-        itemCount: images.length,
-        itemBuilder: (context, index) {
-          return Image.network(
-            images[index],
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
-              return const ColoredBox(
-                color: AppColors.lightGray,
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) => const ColoredBox(
+      child: images.isEmpty
+          ? const ColoredBox(
               color: AppColors.lightGray,
               child: Center(
-                child: Icon(Icons.image_not_supported_outlined,
-                    color: AppColors.mediumGray),
+                child: Icon(Icons.home_outlined,
+                    size: 48, color: AppColors.mediumGray),
               ),
+            )
+          : PageView.builder(
+              itemCount: images.length,
+              itemBuilder: (context, index) {
+                return Image.network(
+                  images[index],
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return const ColoredBox(
+                      color: AppColors.lightGray,
+                      child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) =>
+                      const ColoredBox(
+                    color: AppColors.lightGray,
+                    child: Center(
+                      child: Icon(Icons.image_not_supported_outlined,
+                          color: AppColors.mediumGray),
+                    ),
+                  ),
+                );
+              },
             ),
-          );
-        },
+    );
+  }
+}
+
+class _MapPinButton extends StatelessWidget {
+  final Property property;
+
+  const _MapPinButton({required this.property});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.white,
+      shape: const CircleBorder(),
+      elevation: 3,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PropertyLocationScreen(property: property),
+          ),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.all(10),
+          child: Icon(Icons.location_on, color: AppColors.statusAlert),
+        ),
       ),
     );
   }
@@ -132,16 +213,18 @@ class _FeatureRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        _FeatureItem(
-          icon: Icons.bed_outlined,
-          label: 'Habitaciones',
-          value: '${property.bedrooms}',
-        ),
-        _FeatureItem(
-          icon: Icons.bathtub_outlined,
-          label: 'Banos',
-          value: '${property.bathrooms}',
-        ),
+        if (property.type.hasBedrooms)
+          _FeatureItem(
+            icon: Icons.bed_outlined,
+            label: 'Habitaciones',
+            value: '${property.bedrooms}',
+          ),
+        if (property.type.hasBathrooms)
+          _FeatureItem(
+            icon: Icons.bathtub_outlined,
+            label: 'Banos',
+            value: '${property.bathrooms}',
+          ),
         _FeatureItem(
           icon: Icons.square_foot,
           label: 'Area',

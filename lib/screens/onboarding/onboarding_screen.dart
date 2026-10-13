@@ -19,19 +19,15 @@ class OnboardingScreen extends StatelessWidget {
           child: Column(
             children: [
               const Spacer(),
-              // Logo placeholder
               Container(
                 width: 96,
                 height: 96,
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: AppColors.white,
                   borderRadius: BorderRadius.circular(24),
                 ),
-                child: const Icon(
-                  Icons.home_work_rounded,
-                  size: 56,
-                  color: AppColors.primaryBlue,
-                ),
+                child: Image.asset('assets/icon/logo.png'),
               ),
               const SizedBox(height: 24),
               RichText(

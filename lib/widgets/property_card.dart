@@ -31,7 +31,11 @@ class PropertyCard extends StatelessWidget {
           children: [
             Stack(
               children: [
-                _CoverImage(url: property.imageUrls.first),
+                _CoverImage(
+                  url: property.imageUrls.isNotEmpty
+                      ? property.imageUrls.first
+                      : null,
+                ),
                 Positioned(
                   top: 12,
                   left: 12,
@@ -96,14 +100,16 @@ class PropertyCard extends StatelessWidget {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      _Feature(
-                        icon: Icons.bed_outlined,
-                        value: '${property.bedrooms}',
-                      ),
-                      _Feature(
-                        icon: Icons.bathtub_outlined,
-                        value: '${property.bathrooms}',
-                      ),
+                      if (property.type.hasBedrooms)
+                        _Feature(
+                          icon: Icons.bed_outlined,
+                          value: '${property.bedrooms}',
+                        ),
+                      if (property.type.hasBathrooms)
+                        _Feature(
+                          icon: Icons.bathtub_outlined,
+                          value: '${property.bathrooms}',
+                        ),
                       _Feature(
                         icon: Icons.square_foot,
                         value: '${property.areaM2.round()} m2',
@@ -121,17 +127,31 @@ class PropertyCard extends StatelessWidget {
 }
 
 class _CoverImage extends StatelessWidget {
-  final String url;
+  final String? url;
 
   const _CoverImage({required this.url});
 
   @override
   Widget build(BuildContext context) {
+    final source = url;
+    if (source == null || source.isEmpty) {
+      return const SizedBox(
+        height: 170,
+        width: double.infinity,
+        child: ColoredBox(
+          color: AppColors.lightGray,
+          child: Center(
+            child: Icon(Icons.home_outlined,
+                size: 40, color: AppColors.mediumGray),
+          ),
+        ),
+      );
+    }
     return SizedBox(
       height: 170,
       width: double.infinity,
       child: Image.network(
-        url,
+        source,
         fit: BoxFit.cover,
         loadingBuilder: (context, child, progress) {
           if (progress == null) return child;

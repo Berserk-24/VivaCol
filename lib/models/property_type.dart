@@ -30,4 +30,11 @@ extension PropertyTypeX on PropertyType {
         return 'Lote';
     }
   }
+
+  /// Vivienda (apartamento/casa) reporta habitaciones; el resto no.
+  bool get hasBedrooms =>
+      this == PropertyType.apartamento || this == PropertyType.casa;
+
+  /// Los lotes no tienen banos; el resto si.
+  bool get hasBathrooms => this != PropertyType.lote;
 }

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../models/app_user.dart';
+import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 
-/// Pantalla de inicio de sesion / registro con autenticacion simulada
+/// Pantalla de inicio de sesion / registro con Firebase Authentication
 /// y seleccion del tipo de usuario.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,23 +16,49 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
   bool _isRegister = false;
+  bool _submitting = false;
   UserRole _selectedRole = UserRole.buscador;
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    // Autenticacion simulada: navega directo al home.
-    context.go('/home');
+    FocusScope.of(context).unfocus();
+    setState(() => _submitting = true);
+
+    final auth = context.read<AuthProvider>();
+    final email = _emailController.text;
+    final password = _passwordController.text;
+
+    final error = _isRegister
+        ? await auth.register(
+            name: _nameController.text,
+            email: email,
+            password: password,
+            role: _selectedRole,
+          )
+        : await auth.signIn(email, password);
+
+    if (!mounted) return;
+    setState(() => _submitting = false);
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: AppColors.statusAlert),
+      );
+    }
+    // En caso de exito, el router redirige automaticamente a /home.
   }
 
   @override
@@ -53,6 +80,23 @@ class _LoginScreenState extends State<LoginScreen> {
               style: textTheme.headlineMedium,
             ),
             const SizedBox(height: 24),
+            if (_isRegister) ...[
+              TextFormField(
+                controller: _nameController,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre o inmobiliaria',
+                  prefixIcon: Icon(Icons.badge_outlined),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Ingresa un nombre';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
             TextFormField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
@@ -76,8 +120,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 prefixIcon: Icon(Icons.lock_outline),
               ),
               validator: (value) {
-                if (value == null || value.length < 4) {
-                  return 'Minimo 4 caracteres';
+                if (value == null || value.length < 6) {
+                  return 'Minimo 6 caracteres';
                 }
                 return null;
               },
@@ -106,12 +150,23 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: _submit,
-              child: Text(_isRegister ? 'Registrarme' : 'Entrar'),
+              onPressed: _submitting ? null : _submit,
+              child: _submitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.white,
+                      ),
+                    )
+                  : Text(_isRegister ? 'Registrarme' : 'Entrar'),
             ),
             const SizedBox(height: 12),
             TextButton(
-              onPressed: () => setState(() => _isRegister = !_isRegister),
+              onPressed: _submitting
+                  ? null
+                  : () => setState(() => _isRegister = !_isRegister),
               child: Text(
                 _isRegister
                     ? 'Ya tengo cuenta, iniciar sesion'

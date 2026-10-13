@@ -1,0 +1,39 @@
+rules_version = '2';
+
+// Reglas de seguridad de Cloud Firestore para VivaCol.
+// - Cualquier usuario autenticado puede leer propiedades y reportes.
+// - Solo el dueno de la publicacion (publisherId == uid) puede crear/editar
+//   su propiedad; el recalculo de estado se permite a usuarios autenticados.
+// - Cualquier autenticado puede crear reportes de la comunidad.
+// - Cada usuario solo puede leer/escribir su propio documento de perfil.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /properties/{propertyId} {
+      allow read: if request.auth != null;
+      // Crear: debe ir firmado por el propio usuario.
+      allow create: if request.auth != null
+        && request.resource.data.publisherId == request.auth.uid;
+      // Actualizar: el dueno puede editar todo; cualquier autenticado puede
+      // actualizar solo el estado/fecha (recalculo por reportes).
+      allow update: if request.auth != null && (
+        resource.data.publisherId == request.auth.uid
+        || request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'lastUpdated'])
+      );
+      allow delete: if request.auth != null
+        && resource.data.publisherId == request.auth.uid;
+
+      match /reports/{reportId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
