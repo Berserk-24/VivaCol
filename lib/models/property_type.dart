@@ -37,4 +37,7 @@ extension PropertyTypeX on PropertyType {
 
   /// Los lotes no tienen banos; el resto si.
   bool get hasBathrooms => this != PropertyType.lote;
+
+  /// Los lotes no manejan parqueadero; el resto si puede indicarlo.
+  bool get hasParking => this != PropertyType.lote;
 }

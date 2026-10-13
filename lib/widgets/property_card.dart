@@ -39,7 +39,7 @@ class PropertyCard extends StatelessWidget {
                 Positioned(
                   top: 12,
                   left: 12,
-                  child: StatusBadge(status: property.status),
+                  child: StatusBadge(status: property.liveStatus()),
                 ),
                 Positioned(
                   top: 12,
@@ -114,6 +114,11 @@ class PropertyCard extends StatelessWidget {
                         icon: Icons.square_foot,
                         value: '${property.areaM2.round()} m2',
                       ),
+                      if (property.parking)
+                        const _Feature(
+                          icon: Icons.local_parking,
+                          value: 'Si',
+                        ),
                     ],
                   ),
                 ],

@@ -6,6 +6,8 @@ import '../../models/community_report.dart';
 import '../../models/property.dart';
 import '../../models/property_status.dart';
 import '../../models/property_type.dart';
+import '../../providers/ai_provider.dart';
+import '../../services/ai_service.dart';
 import '../../services/property_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
@@ -84,7 +86,7 @@ class _DetailContent extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    StatusBadge(status: property.status),
+                    StatusBadge(status: property.liveStatus()),
                     Text(
                       property.listingType.label,
                       style: textTheme.bodyMedium?.copyWith(
@@ -113,12 +115,40 @@ class _DetailContent extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 _FeatureRow(property: property),
+                if (property.type.hasParking) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(
+                        property.parking
+                            ? Icons.local_parking
+                            : Icons.do_not_disturb_on_outlined,
+                        size: 18,
+                        color: property.parking
+                            ? AppColors.accentGreen
+                            : AppColors.mediumGray,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        property.parking
+                            ? 'Cuenta con parqueadero'
+                            : 'Sin parqueadero',
+                        style: textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
+                ],
                 const Divider(height: 32),
                 Text('Descripcion', style: textTheme.titleMedium),
                 const SizedBox(height: 8),
                 Text(property.description, style: textTheme.bodyMedium),
                 const Divider(height: 32),
                 _StatusInfo(property: property),
+                if (property.reports.isNotEmpty &&
+                    context.watch<AiProvider>().enabled) ...[
+                  const Divider(height: 32),
+                  _ReliabilitySummary(property: property),
+                ],
                 const Divider(height: 32),
                 _ReportHistory(reports: property.reports),
               ],
@@ -273,28 +303,29 @@ class _StatusInfo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final status = property.liveStatus();
+    final confidence = (property.confidenceNow() * 100).round();
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: property.status.backgroundColor,
+        color: status.backgroundColor,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          Icon(property.status.icon, color: property.status.color, size: 28),
+          Icon(status.icon, color: status.color, size: 28),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Estado: ${property.status.label}',
-                  style: textTheme.titleMedium
-                      ?.copyWith(color: property.status.color),
+                  'Estado: ${status.label}',
+                  style: textTheme.titleMedium?.copyWith(color: status.color),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Actualizado por la comunidad. '
+                  'Confianza $confidence%. '
                   '${property.reports.length} reporte(s) recibidos.',
                   style: textTheme.bodySmall,
                 ),
@@ -377,6 +408,107 @@ class _ReportTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Resumen de confiabilidad generado con IA. Solo se muestra cuando hay
+/// reportes y el usuario pulsa el boton para generarlo.
+class _ReliabilitySummary extends StatefulWidget {
+  final Property property;
+
+  const _ReliabilitySummary({required this.property});
+
+  @override
+  State<_ReliabilitySummary> createState() => _ReliabilitySummaryState();
+}
+
+class _ReliabilitySummaryState extends State<_ReliabilitySummary> {
+  bool _loading = false;
+  String? _summary;
+  String? _error;
+
+  Future<void> _generate() async {
+    final ai = context.read<AiService>();
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final text = await ai.generateReliabilitySummary(widget.property);
+      if (!mounted) return;
+      setState(() => _summary = text);
+    } on AiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = 'No se pudo generar el resumen.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.auto_awesome,
+                size: 18, color: AppColors.primaryBlue),
+            const SizedBox(width: 6),
+            Text('Resumen de confiabilidad (IA)', style: textTheme.titleMedium),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_summary != null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.primaryBlue.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(_summary!, style: textTheme.bodyMedium),
+          )
+        else
+          Text(
+            'Genera un resumen con IA a partir de los reportes de la '
+            'comunidad para esta publicacion.',
+            style: textTheme.bodySmall,
+          ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _error!,
+            style: textTheme.bodySmall?.copyWith(color: AppColors.statusAlert),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.tonalIcon(
+            onPressed: _loading ? null : _generate,
+            icon: _loading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.auto_awesome, size: 18),
+            label: Text(
+              _loading
+                  ? 'Generando...'
+                  : _summary == null
+                      ? 'Generar resumen'
+                      : 'Regenerar',
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

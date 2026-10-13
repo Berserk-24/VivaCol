@@ -55,7 +55,8 @@ class PropertyLocationScreen extends StatelessWidget {
         Marker(
           markerId: MarkerId(property.id.isEmpty ? 'propiedad' : property.id),
           position: target,
-          icon: BitmapDescriptor.defaultMarkerWithHue(_hueFor(property.status)),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+              _hueFor(property.liveStatus())),
           infoWindow: InfoWindow(
             title: property.title,
             snippet: property.address.isNotEmpty

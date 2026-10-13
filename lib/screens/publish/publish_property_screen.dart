@@ -1,7 +1,6 @@
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart' as geo;
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -13,10 +12,13 @@ import '../../config/map_config.dart';
 import '../../models/property.dart';
 import '../../models/property_status.dart';
 import '../../models/property_type.dart';
+import '../../providers/ai_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/ai_service.dart';
 import '../../services/property_repository.dart';
 import '../../services/storage_service.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/format.dart';
 
 /// Formulario para publicar una propiedad. Disponible solo para
 /// agencias y propietarios. Persiste la publicacion en Cloud Firestore.
@@ -40,15 +42,69 @@ class _PublishPropertyScreenState extends State<PublishPropertyScreen> {
   PropertyType _type = PropertyType.apartamento;
   ListingType _listingType = ListingType.venta;
   String? _locality;
+  bool _parking = false;
   final List<XFile> _images = [];
   LatLng? _location;
   bool _geocoding = false;
   bool _submitting = false;
+  bool _generatingDesc = false;
+  bool _showIaHint = false;
 
   Future<void> _pickImages() async {
     final picked = await ImagePicker().pickMultiImage(imageQuality: 70);
     if (picked.isEmpty) return;
     setState(() => _images.addAll(picked));
+  }
+
+  /// Indica si los campos que alimentan a la IA ya estan diligenciados.
+  /// Habitaciones y banos solo se exigen cuando el tipo los contempla.
+  bool _fieldsReadyForAi() {
+    final bedroomsOk =
+        !_type.hasBedrooms || _bedroomsController.text.trim().isNotEmpty;
+    final bathroomsOk =
+        !_type.hasBathrooms || _bathroomsController.text.trim().isNotEmpty;
+    return _titleController.text.trim().isNotEmpty &&
+        parseGroupedNumber(_priceController.text) != null &&
+        _locality != null &&
+        bedroomsOk &&
+        bathroomsOk &&
+        _areaController.text.trim().isNotEmpty;
+  }
+
+  /// Genera una descripcion con IA a partir de los datos del formulario.
+  /// El resultado queda en el campo para que el usuario lo edite.
+  Future<void> _generateDescription() async {
+    if (!_fieldsReadyForAi()) {
+      setState(() => _showIaHint = true);
+      return;
+    }
+    setState(() => _showIaHint = false);
+    final ai = context.read<AiService>();
+    FocusScope.of(context).unfocus();
+    setState(() => _generatingDesc = true);
+    try {
+      final text = await ai.generateDescription(
+        title: _titleController.text.trim(),
+        type: _type,
+        listingType: _listingType,
+        price: parseGroupedNumber(_priceController.text) ?? 0,
+        locality: _locality ?? 'Bogota',
+        bedrooms: int.tryParse(_bedroomsController.text.trim()),
+        bathrooms: int.tryParse(_bathroomsController.text.trim()),
+        areaM2: double.tryParse(_areaController.text.trim()),
+        parking: _parking,
+      );
+      if (!mounted) return;
+      setState(() => _descController.text = text);
+    } on AiException catch (e) {
+      if (!mounted) return;
+      _showError(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      _showError('No se pudo generar la descripcion. Intenta de nuevo.');
+    } finally {
+      if (mounted) setState(() => _generatingDesc = false);
+    }
   }
 
   /// Convierte la direccion escrita en coordenadas y mueve el marcador.
@@ -151,7 +207,7 @@ class _PublishPropertyScreenState extends State<PublishPropertyScreen> {
       id: '',
       title: _titleController.text.trim(),
       description: _descController.text.trim(),
-      price: double.parse(_priceController.text),
+      price: parseGroupedNumber(_priceController.text) ?? 0,
       city: 'Bogota',
       neighborhood: _locality!,
       address: _addressController.text.trim(),
@@ -162,6 +218,7 @@ class _PublishPropertyScreenState extends State<PublishPropertyScreen> {
       bedrooms: bedrooms,
       bathrooms: bathrooms,
       areaM2: areaM2,
+      parking: _type.hasParking ? _parking : false,
       latitude: _location?.latitude,
       longitude: _location?.longitude,
       publisherId: user.id,
@@ -215,10 +272,56 @@ class _PublishPropertyScreenState extends State<PublishPropertyScreen> {
               decoration: const InputDecoration(labelText: 'Descripcion'),
               validator: _required,
             ),
+            if (context.watch<AiProvider>().enabled)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: _generatingDesc ? null : _generateDescription,
+                      icon: _generatingDesc
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.auto_awesome, size: 18),
+                      label: Text(
+                        _generatingDesc ? 'Generando...' : 'Generar con IA',
+                      ),
+                    ),
+                  ),
+                  if (_showIaHint)
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.lightbulb_outline,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Completa primero todos los campos para que la IA '
+                            'genere una mejor descripcion.',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _priceController,
               keyboardType: TextInputType.number,
+              inputFormatters: [ThousandsSeparatorInputFormatter()],
               decoration: const InputDecoration(
                 labelText: 'Precio',
                 prefixText: '\$ ',
@@ -227,7 +330,7 @@ class _PublishPropertyScreenState extends State<PublishPropertyScreen> {
                 if (value == null || value.trim().isEmpty) {
                   return 'Ingresa un precio';
                 }
-                if (double.tryParse(value) == null) {
+                if (parseGroupedNumber(value) == null) {
                   return 'Solo numeros';
                 }
                 return null;
@@ -299,6 +402,15 @@ class _PublishPropertyScreenState extends State<PublishPropertyScreen> {
               bathrooms: _bathroomsController,
               area: _areaController,
             ),
+            if (_type.hasParking)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _parking,
+                onChanged: (value) => setState(() => _parking = value),
+                secondary: const Icon(Icons.local_parking_outlined),
+                title: const Text('Cuenta con parqueadero'),
+              ),
+            const SizedBox(height: 8),
             Text('Operacion', style: textTheme.titleMedium),
             const SizedBox(height: 8),
             SegmentedButton<ListingType>(

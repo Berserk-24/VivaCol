@@ -10,6 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/property_repository.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/price_range_dialog.dart';
 import '../../widgets/property_card.dart';
 
 /// Pantalla principal con buscador, filtros basicos y listado de propiedades.
@@ -28,12 +29,16 @@ class _HomeScreenState extends State<HomeScreen> {
   PropertyType? _selectedType;
   ListingType? _selectedListing;
   String _sort = 'recientes';
+  double? _minPrice;
+  double? _maxPrice;
 
   bool get _hasActiveFilters =>
       _query.isNotEmpty ||
       _selectedCity != 'Todas' ||
       _selectedType != null ||
-      _selectedListing != null;
+      _selectedListing != null ||
+      _minPrice != null ||
+      _maxPrice != null;
 
   void _clearFilters() {
     setState(() {
@@ -42,6 +47,21 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedCity = 'Todas';
       _selectedType = null;
       _selectedListing = null;
+      _minPrice = null;
+      _maxPrice = null;
+    });
+  }
+
+  Future<void> _editPrice() async {
+    final result = await showPriceRangeDialog(
+      context,
+      min: _minPrice,
+      max: _maxPrice,
+    );
+    if (result == null) return;
+    setState(() {
+      _minPrice = result.min;
+      _maxPrice = result.max;
     });
   }
 
@@ -61,7 +81,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final matchesType = _selectedType == null || p.type == _selectedType;
       final matchesListing =
           _selectedListing == null || p.listingType == _selectedListing;
-      return matchesQuery && matchesCity && matchesType && matchesListing;
+      final matchesPrice = (_minPrice == null || p.price >= _minPrice!) &&
+          (_maxPrice == null || p.price <= _maxPrice!);
+      return matchesQuery &&
+          matchesCity &&
+          matchesType &&
+          matchesListing &&
+          matchesPrice;
     }).toList();
     switch (_sort) {
       case 'precio_asc':
@@ -153,6 +179,7 @@ class _HomeScreenState extends State<HomeScreen> {
             selectedType: _selectedType,
             selectedListing: _selectedListing,
             selectedSort: _sort,
+            priceActive: _minPrice != null || _maxPrice != null,
             onQueryChanged: (value) => setState(() => _query = value),
             onCityChanged: (value) =>
                 setState(() => _selectedCity = value ?? 'Todas'),
@@ -160,6 +187,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onListingChanged: (value) =>
                 setState(() => _selectedListing = value),
             onSortChanged: (value) => setState(() => _sort = value),
+            onPriceTap: _editPrice,
           ),
           Expanded(
             child: Container(
@@ -239,11 +267,13 @@ class _SearchAndFilters extends StatelessWidget {
   final PropertyType? selectedType;
   final ListingType? selectedListing;
   final String selectedSort;
+  final bool priceActive;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<String?> onCityChanged;
   final ValueChanged<PropertyType?> onTypeChanged;
   final ValueChanged<ListingType?> onListingChanged;
   final ValueChanged<String> onSortChanged;
+  final VoidCallback onPriceTap;
 
   const _SearchAndFilters({
     required this.controller,
@@ -251,11 +281,13 @@ class _SearchAndFilters extends StatelessWidget {
     required this.selectedType,
     required this.selectedListing,
     required this.selectedSort,
+    required this.priceActive,
     required this.onQueryChanged,
     required this.onCityChanged,
     required this.onTypeChanged,
     required this.onListingChanged,
     required this.onSortChanged,
+    required this.onPriceTap,
   });
 
   @override
@@ -307,6 +339,11 @@ class _SearchAndFilters extends StatelessWidget {
                 _SortFilter(
                   selectedSort: selectedSort,
                   onChanged: onSortChanged,
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: onPriceTap,
+                  child: _FilterChipBox(label: 'Precio', active: priceActive),
                 ),
               ],
             ),

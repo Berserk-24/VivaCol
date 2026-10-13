@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/community_report.dart';
 import '../models/property.dart';
 import '../models/property_status.dart';
+import 'reliability.dart';
 
 /// Acceso a propiedades y reportes de la comunidad en Cloud Firestore.
 ///
@@ -66,14 +67,28 @@ class PropertyRepository {
   }
 
   /// Vuelve a calcular el estado de una propiedad a partir de sus reportes.
+  /// Fija la confianza base del ultimo reporte y la fecha de referencia para
+  /// que el decaimiento continue desde ese punto.
   Future<void> _recomputeStatus(String propertyId) async {
     final snap = await _reportsOf(propertyId).get();
     final reports =
         snap.docs.map((d) => CommunityReport.fromMap(d.id, d.data())).toList();
-    final status = computeStatus(reports);
+
+    double base;
+    DateTime reference;
+    if (reports.isEmpty) {
+      base = 1.0;
+      reference = DateTime.now();
+    } else {
+      final latest = reports.reduce((a, b) => a.date.isAfter(b.date) ? a : b);
+      base = baseConfidence(latest.type);
+      reference = latest.date;
+    }
+    final status = statusFromConfidence(base);
     await _properties.doc(propertyId).update({
       'status': status.name,
-      'lastUpdated': DateTime.now().toIso8601String(),
+      'confidenceBase': base,
+      'lastUpdated': reference.toIso8601String(),
     });
   }
 
@@ -89,17 +104,19 @@ class PropertyRepository {
   }
 }
 
-/// Heuristica del semaforo basada en los reportes de la comunidad.
-/// - 2 o mas reportes "ya no existe" => alerta
-/// - al menos un reporte de cambio de precio o "no existe" => en revision
-/// - de lo contrario => verificado
-PropertyStatus computeStatus(List<CommunityReport> reports) {
-  if (reports.isEmpty) return PropertyStatus.verificado;
-  final noExiste = reports.where((r) => r.type == ReportType.noExiste).length;
-  if (noExiste >= 2) return PropertyStatus.alerta;
-  final hayCambios = reports.any(
-    (r) => r.type == ReportType.cambioPrecio || r.type == ReportType.noExiste,
+/// Estado del semaforo a partir de los reportes, aplicando el decaimiento
+/// temporal de la confianza. El reporte mas reciente fija la confianza base y
+/// esta decae con los dias transcurridos.
+PropertyStatus computeStatus(
+  List<CommunityReport> reports, {
+  DateTime? publishedAt,
+  DateTime? now,
+}) {
+  final current = now ?? DateTime.now();
+  final confidence = confidenceFromReports(
+    reports,
+    publishedAt: publishedAt ?? current,
+    now: current,
   );
-  if (hayCambios) return PropertyStatus.enRevision;
-  return PropertyStatus.verificado;
+  return statusFromConfidence(confidence);
 }

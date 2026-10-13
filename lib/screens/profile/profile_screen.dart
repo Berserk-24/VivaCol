@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/app_user.dart';
 import '../../models/property.dart';
+import '../../providers/ai_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/property_repository.dart';
@@ -101,6 +102,19 @@ class ProfileScreen extends StatelessWidget {
               title: const Text('Modo oscuro'),
             ),
           ),
+          const SizedBox(height: 12),
+          Card(
+            child: SwitchListTile(
+              value: context.watch<AiProvider>().enabled,
+              onChanged: (value) =>
+                  context.read<AiProvider>().setEnabled(value),
+              secondary: const Icon(Icons.auto_awesome),
+              title: const Text('Asistente de IA'),
+              subtitle: const Text(
+                'Genera descripciones y resumenes de confiabilidad.',
+              ),
+            ),
+          ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
             onPressed: () => _confirmSignOut(context),
@@ -172,7 +186,8 @@ class _PublishedList extends StatelessWidget {
                         color: AppColors.primaryBlue),
                     title: Text(p.title),
                     subtitle: Text(formatPrice(p.price)),
-                    trailing: StatusBadge(status: p.status, compact: true),
+                    trailing:
+                        StatusBadge(status: p.liveStatus(), compact: true),
                   ),
                 ),
               )
