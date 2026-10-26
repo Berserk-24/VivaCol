@@ -58,37 +58,45 @@ class PropertyRepository {
   }
 
   /// Registra un reporte de la comunidad y recalcula el estado semaforo.
+  ///
+  /// El documento usa el uid del autor como id ("un voto por usuario"): un nuevo
+  /// reporte del mismo usuario sobrescribe el anterior.
   Future<void> addReport({
     required String propertyId,
     required CommunityReport report,
   }) async {
-    await _reportsOf(propertyId).add(report.toMap());
+    final docId = report.authorId.isNotEmpty ? report.authorId : null;
+    final reports = _reportsOf(propertyId);
+    if (docId != null) {
+      await reports.doc(docId).set(report.toMap());
+    } else {
+      await reports.add(report.toMap());
+    }
     await _recomputeStatus(propertyId);
   }
 
-  /// Vuelve a calcular el estado de una propiedad a partir de sus reportes.
-  /// Fija la confianza base del ultimo reporte y la fecha de referencia para
-  /// que el decaimiento continue desde ese punto.
+  /// Vuelve a calcular el estado a partir de la evidencia acumulada de los
+  /// reportes (deduplicados por usuario y sin el publicador). Guarda la
+  /// evidencia agregada y la fecha de anclaje para el decaimiento en vivo.
   Future<void> _recomputeStatus(String propertyId) async {
-    final snap = await _reportsOf(propertyId).get();
-    final reports =
-        snap.docs.map((d) => CommunityReport.fromMap(d.id, d.data())).toList();
+    final propDoc = await _properties.doc(propertyId).get();
+    final publisherId = (propDoc.data()?['publisherId'] ?? '') as String;
 
-    double base;
-    DateTime reference;
-    if (reports.isEmpty) {
-      base = 1.0;
-      reference = DateTime.now();
-    } else {
-      final latest = reports.reduce((a, b) => a.date.isAfter(b.date) ? a : b);
-      base = baseConfidence(latest.type);
-      reference = latest.date;
-    }
-    final status = statusFromConfidence(base);
+    final snap = await _reportsOf(propertyId).get();
+    final rawReports =
+        snap.docs.map((d) => CommunityReport.fromMap(d.id, d.data())).toList();
+    final votes = dedupeReports(rawReports, publisherId: publisherId);
+
+    final now = DateTime.now();
+    final evidence = aggregateEvidence(votes, now);
+    final status = statusFromConfidence(
+      reliabilityFromEvidence(evidence.r, evidence.s),
+    );
     await _properties.doc(propertyId).update({
       'status': status.name,
-      'confidenceBase': base,
-      'lastUpdated': reference.toIso8601String(),
+      'evidenceR': evidence.r,
+      'evidenceS': evidence.s,
+      'lastUpdated': now.toIso8601String(),
     });
   }
 
@@ -104,19 +112,11 @@ class PropertyRepository {
   }
 }
 
-/// Estado del semaforo a partir de los reportes, aplicando el decaimiento
-/// temporal de la confianza. El reporte mas reciente fija la confianza base y
-/// esta decae con los dias transcurridos.
+/// Estado del semaforo a partir de los reportes ya deduplicados, aplicando el
+/// modelo de reputacion Beta con decaimiento temporal (ver reliability.dart).
 PropertyStatus computeStatus(
   List<CommunityReport> reports, {
-  DateTime? publishedAt,
   DateTime? now,
 }) {
-  final current = now ?? DateTime.now();
-  final confidence = confidenceFromReports(
-    reports,
-    publishedAt: publishedAt ?? current,
-    now: current,
-  );
-  return statusFromConfidence(confidence);
+  return statusFromConfidence(reliabilityFromReports(reports, now: now));
 }

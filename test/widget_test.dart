@@ -1,91 +1,122 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vivacol/models/community_report.dart';
 import 'package:vivacol/models/property_status.dart';
-import 'package:vivacol/services/property_repository.dart';
 import 'package:vivacol/services/reliability.dart';
 
-CommunityReport _report(ReportType type, {DateTime? date}) => CommunityReport(
-      id: '',
+// Momento fijo de referencia para que las pruebas sean deterministas.
+final _now = DateTime(2026, 1, 1, 12);
+
+CommunityReport _report(
+  ReportType type, {
+  String authorId = 'u1',
+  int ageDays = 0,
+}) =>
+    CommunityReport(
+      id: authorId,
       propertyId: 'p1',
       type: type,
-      authorName: 'Test',
+      authorId: authorId,
+      authorName: authorId,
       comment: '',
-      date: date ?? DateTime(2026),
+      date: _now.subtract(Duration(days: ageDays)),
     );
 
 void main() {
-  // Momento fijo de referencia para que las pruebas sean deterministas.
-  final now = DateTime(2026, 1, 1);
-
-  group('computeStatus (semaforo con decaimiento)', () {
-    test('sin reportes => verificado', () {
-      expect(
-        computeStatus(const [], publishedAt: now, now: now),
-        PropertyStatus.verificado,
-      );
+  group('confianza (reputacion Beta con decaimiento)', () {
+    test('sin reportes => C = 0.5 (en revision)', () {
+      final c = reliabilityFromReports(const [], now: _now);
+      expect(c, closeTo(0.5, 1e-9));
+      expect(statusFromConfidence(c), PropertyStatus.enRevision);
     });
 
-    test('reporte reciente "sigue disponible" => verificado', () {
-      final reports = [_report(ReportType.disponible, date: now)];
-      expect(
-        computeStatus(reports, now: now),
-        PropertyStatus.verificado,
-      );
+    test('un reporte reciente "disponible" => verde', () {
+      final reports = [_report(ReportType.disponible)];
+      final c = reliabilityFromReports(reports, now: _now);
+      expect(c, closeTo(2 / 3, 1e-6));
+      expect(statusFromConfidence(c), PropertyStatus.verificado);
     });
 
-    test('cambio de precio reciente => en revision', () {
-      final reports = [_report(ReportType.cambioPrecio, date: now)];
+    test('un reporte viejo "disponible" tiende a 0.5 (en revision)', () {
+      final reports = [_report(ReportType.disponible, ageDays: 180)];
+      final c = reliabilityFromReports(reports, now: _now);
+      expect(c, lessThan(kConfidenceGreenMin));
+      expect(c, greaterThan(kConfidenceRedMax));
+      expect(statusFromConfidence(c), PropertyStatus.enRevision);
+    });
+
+    test('un reporte reciente "ya no existe" => rojo', () {
+      final reports = [_report(ReportType.noExiste)];
+      final c = reliabilityFromReports(reports, now: _now);
+      expect(c, closeTo(0.40, 1e-6));
+      expect(statusFromConfidence(c), PropertyStatus.alerta);
+    });
+
+    test('un cambio de precio reciente => en revision', () {
+      final reports = [_report(ReportType.cambioPrecio)];
       expect(
-        computeStatus(reports, now: now),
+        statusFromConfidence(reliabilityFromReports(reports, now: _now)),
         PropertyStatus.enRevision,
-      );
-    });
-
-    test('"ya no existe" reciente => alerta', () {
-      final reports = [_report(ReportType.noExiste, date: now)];
-      expect(
-        computeStatus(reports, now: now),
-        PropertyStatus.alerta,
-      );
-    });
-
-    test('el reporte mas reciente refresca la confianza', () {
-      final reports = [
-        _report(ReportType.noExiste,
-            date: now.subtract(const Duration(days: 5))),
-        _report(ReportType.disponible, date: now),
-      ];
-      expect(
-        computeStatus(reports, now: now),
-        PropertyStatus.verificado,
       );
     });
   });
 
-  group('decaimiento de la confianza', () {
-    test('C(0) = C0 (sin tiempo transcurrido)', () {
-      expect(decayConfidence(1.0, 0), closeTo(1.0, 1e-9));
+  group('deduplicacion (un voto por usuario, sin publicador)', () {
+    test('el mismo usuario reportando dos veces cuenta una vez', () {
+      final raw = [
+        _report(ReportType.noExiste, authorId: 'u1', ageDays: 2),
+        _report(ReportType.disponible, authorId: 'u1', ageDays: 0),
+      ];
+      final votes = dedupeReports(raw);
+      expect(votes.length, 1);
+      // Se conserva el mas reciente ("disponible").
+      expect(votes.single.type, ReportType.disponible);
     });
 
-    test('tras una vida media la confianza cae a la mitad', () {
-      expect(
-        decayConfidence(1.0, kConfidenceHalfLifeDays),
-        closeTo(0.5, 1e-6),
-      );
+    test('el reporte del publicador se ignora', () {
+      final raw = [
+        _report(ReportType.disponible, authorId: 'dueno'),
+        _report(ReportType.disponible, authorId: 'u2'),
+      ];
+      final votes = dedupeReports(raw, publisherId: 'dueno');
+      expect(votes.length, 1);
+      expect(votes.single.authorId, 'u2');
     });
 
-    test('sin refrescar, un reporte "disponible" baja de estado con el tiempo',
+    test('reportes antiguos sin authorId cuentan como votos independientes',
         () {
-      final reports = [_report(ReportType.disponible, date: now)];
-      final later = now.add(const Duration(days: 60));
-      expect(
-        computeStatus(reports, now: now),
-        PropertyStatus.verificado,
-      );
-      expect(
-        computeStatus(reports, now: later),
-        PropertyStatus.alerta,
-      );
+      final raw = [
+        CommunityReport(
+          id: 'a',
+          propertyId: 'p1',
+          type: ReportType.disponible,
+          authorName: 'anon',
+          comment: '',
+          date: _now,
+        ),
+        CommunityReport(
+          id: 'b',
+          propertyId: 'p1',
+          type: ReportType.noExiste,
+          authorName: 'anon',
+          comment: '',
+          date: _now,
+        ),
+      ];
+      expect(dedupeReports(raw).length, 2);
+    });
+  });
+
+  group('ejemplo de acumulacion de evidencia', () {
+    test('tres usuarios distintos => C ~ 0.61 (en revision)', () {
+      final reports = [
+        _report(ReportType.disponible, authorId: 'u1', ageDays: 0),
+        _report(ReportType.noExiste, authorId: 'u2', ageDays: 10),
+        _report(ReportType.disponible, authorId: 'u3', ageDays: 40),
+      ];
+      final votes = dedupeReports(reports);
+      final c = reliabilityFromReports(votes, now: _now);
+      expect(c, closeTo(0.61, 0.01));
+      expect(statusFromConfidence(c), PropertyStatus.enRevision);
     });
   });
 }

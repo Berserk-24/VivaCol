@@ -26,9 +26,10 @@ class Property {
   final String publisherName;
   final DateTime lastUpdated;
 
-  /// Confianza base C0 del ultimo reporte (1.0 si no hay reportes).
-  /// Decae con el tiempo desde [lastUpdated].
-  final double confidenceBase;
+  /// Evidencia Beta agregada de los reportes, anclada en [lastUpdated].
+  /// Decae con el tiempo para recalcular la confianza en vivo. Ver reliability.dart.
+  final double evidenceR;
+  final double evidenceS;
   final List<CommunityReport> reports;
 
   const Property({
@@ -52,7 +53,8 @@ class Property {
     this.publisherId = '',
     required this.publisherName,
     required this.lastUpdated,
-    this.confidenceBase = 1.0,
+    this.evidenceR = 0,
+    this.evidenceS = 0,
     this.reports = const [],
   });
 
@@ -61,9 +63,14 @@ class Property {
   /// Indica si la propiedad tiene coordenadas para ubicarla en el mapa.
   bool get hasLocation => latitude != null && longitude != null;
 
-  /// Confianza actual [0,1] aplicando el decaimiento desde [lastUpdated].
-  double confidenceNow([DateTime? now]) => decayConfidence(
-      confidenceBase, daysBetween(lastUpdated, now ?? DateTime.now()));
+  /// Confianza actual [0,1] aplicando el decaimiento de la evidencia desde
+  /// [lastUpdated]. Sin evidencia equivale a 0.5 (incertidumbre).
+  double confidenceNow([DateTime? now]) => reliabilityFromAnchoredEvidence(
+        r: evidenceR,
+        s: evidenceS,
+        anchor: lastUpdated,
+        now: now,
+      );
 
   /// Estado semaforo calculado en vivo segun la confianza decaida.
   PropertyStatus liveStatus([DateTime? now]) =>
@@ -107,7 +114,8 @@ class Property {
       publisherId: (map['publisherId'] ?? '') as String,
       publisherName: (map['publisherName'] ?? '') as String,
       lastUpdated: _parseDate(rawDate),
-      confidenceBase: (map['confidenceBase'] ?? 1.0).toDouble() as double,
+      evidenceR: (map['evidenceR'] ?? 0).toDouble() as double,
+      evidenceS: (map['evidenceS'] ?? 0).toDouble() as double,
       reports: reports,
     );
   }
@@ -133,13 +141,15 @@ class Property {
       'publisherId': publisherId,
       'publisherName': publisherName,
       'lastUpdated': lastUpdated.toIso8601String(),
-      'confidenceBase': confidenceBase,
+      'evidenceR': evidenceR,
+      'evidenceS': evidenceS,
     };
   }
 
   Property copyWith({
     PropertyStatus? status,
-    double? confidenceBase,
+    double? evidenceR,
+    double? evidenceS,
     List<CommunityReport>? reports,
   }) {
     return Property(
@@ -163,7 +173,8 @@ class Property {
       publisherId: publisherId,
       publisherName: publisherName,
       lastUpdated: lastUpdated,
-      confidenceBase: confidenceBase ?? this.confidenceBase,
+      evidenceR: evidenceR ?? this.evidenceR,
+      evidenceS: evidenceS ?? this.evidenceS,
       reports: reports ?? this.reports,
     );
   }

@@ -23,6 +23,9 @@ class CommunityReport {
   final String id;
   final String propertyId;
   final ReportType type;
+
+  /// uid del autor. Se usa como identidad para "un voto por usuario".
+  final String authorId;
   final String authorName;
   final String comment;
   final DateTime date;
@@ -31,6 +34,7 @@ class CommunityReport {
     required this.id,
     required this.propertyId,
     required this.type,
+    this.authorId = '',
     required this.authorName,
     required this.comment,
     required this.date,
@@ -45,6 +49,7 @@ class CommunityReport {
         (t) => t.name == map['type'],
         orElse: () => ReportType.disponible,
       ),
+      authorId: (map['authorId'] ?? '') as String,
       authorName: (map['authorName'] ?? '') as String,
       comment: (map['comment'] ?? '') as String,
       date: _parseDate(rawDate),
@@ -55,6 +60,7 @@ class CommunityReport {
     return {
       'propertyId': propertyId,
       'type': type.name,
+      'authorId': authorId,
       'authorName': authorName,
       'comment': comment,
       'date': date.toIso8601String(),

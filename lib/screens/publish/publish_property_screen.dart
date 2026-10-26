@@ -213,7 +213,7 @@ class _PublishPropertyScreenState extends State<PublishPropertyScreen> {
       address: _addressController.text.trim(),
       type: _type,
       listingType: _listingType,
-      status: PropertyStatus.verificado,
+      status: PropertyStatus.enRevision,
       imageUrls: imageUrls,
       bedrooms: bedrooms,
       bathrooms: bathrooms,

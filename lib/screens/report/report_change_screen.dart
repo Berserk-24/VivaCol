@@ -44,6 +44,7 @@ class _ReportChangeScreenState extends State<ReportChangeScreen> {
       id: '',
       propertyId: widget.propertyId,
       type: _selectedType,
+      authorId: user.id,
       authorName: user.name,
       comment: _commentController.text.trim(),
       date: DateTime.now(),

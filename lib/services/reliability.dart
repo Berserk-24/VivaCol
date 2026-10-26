@@ -3,32 +3,40 @@ import 'dart:math';
 import '../models/community_report.dart';
 import '../models/property_status.dart';
 
-/// Modelo de confiabilidad con decaimiento exponencial.
+/// Modelo de confiabilidad por acumulacion de evidencia.
 ///
-/// La confianza de un dato inmobiliario se comporta como un fenomeno fisico
-/// que pierde intensidad con el tiempo: un reporte reciente aporta toda su
-/// confianza y, si nadie la refresca, decae sola segun
+/// Combina el Sistema de Reputacion Beta (Josang & Ismail, 2002) con un
+/// decaimiento temporal exponencial (Koren, 2009): cada reporte aporta
+/// evidencia a favor (r) o en contra (s) de que la publicacion sigue vigente,
+/// y ese aporte pierde peso con el tiempo.
 ///
-///   C(t) = C0 * e^(-lambda * t)
+///   w = e^(-lambda * dias)        peso del reporte segun su antiguedad
+///   r = suma de w * v             evidencia positiva
+///   s = suma de w * (1 - v)       evidencia negativa
+///   C = (r + 1) / (r + s + 2)     confianza [0,1]
 ///
-/// donde C0 es la confianza del ultimo reporte, t los dias transcurridos y
-/// lambda la velocidad de decaimiento.
+/// Sin reportes C = 0.5 (incertidumbre). A medida que la evidencia envejece,
+/// C tiende a 0.5, no a 0.
 
-/// Vida media de la confianza: cada [kConfidenceHalfLifeDays] dias la
-/// confianza se reduce a la mitad.
+/// Vida media de la evidencia: cada [kConfidenceHalfLifeDays] dias el peso de
+/// un reporte se reduce a la mitad.
 const double kConfidenceHalfLifeDays = 30;
 
-/// lambda de la formula, derivada de la vida media.
+/// lambda del decaimiento, derivada de la vida media.
 const double kConfidenceLambda = ln2 / kConfidenceHalfLifeDays;
 
-/// Umbral minimo de confianza para el estado "verificado".
-const double kConfidenceVerifiedMin = 0.66;
+/// Umbral de confianza para el estado "verificado" (verde).
+///
+/// Nota: con el modelo Beta un unico reporte reciente alcanza como maximo
+/// C = 2/3 (0.667); por eso el verde se fija en 0.66 para que ese caso sea
+/// verde. Subelo a 0.70 si prefieres exigir mas evidencia acumulada.
+const double kConfidenceGreenMin = 0.66;
 
-/// Umbral minimo de confianza para el estado "en revision".
-const double kConfidenceReviewMin = 0.33;
+/// Umbral de confianza para el estado "alerta" (rojo).
+const double kConfidenceRedMax = 0.40;
 
-/// Confianza base C0 que aporta un reporte segun su tipo al momento de emitirse.
-double baseConfidence(ReportType type) {
+/// Evidencia v en [0,1] que aporta un reporte segun su tipo.
+double evidenceValue(ReportType type) {
   switch (type) {
     case ReportType.disponible:
       return 1.0;
@@ -44,39 +52,78 @@ double daysBetween(DateTime from, DateTime to) =>
     to.difference(from).inMinutes /
     (Duration.minutesPerHour * Duration.hoursPerDay);
 
-/// Aplica el decaimiento exponencial sobre una confianza [base] tras [days] dias.
-double decayConfidence(double base, double days) {
-  final t = days < 0 ? 0.0 : days;
-  return (base * exp(-kConfidenceLambda * t)).clamp(0.0, 1.0);
+/// Peso de un reporte de [ageDays] dias de antiguedad: w = e^(-lambda * dias).
+double reportWeight(double ageDays) {
+  final t = ageDays < 0 ? 0.0 : ageDays;
+  return exp(-kConfidenceLambda * t);
 }
 
-/// Confianza actual [0,1] de una propiedad a partir de sus reportes.
+/// Evidencia agregada (r, s) de una lista de reportes evaluada en [reference].
 ///
-/// El reporte mas reciente fija C0 y la fecha de referencia. Sin reportes se
-/// asume recien publicada (confianza plena que tambien decae desde
-/// [publishedAt]).
-double confidenceFromReports(
+/// Recibe reportes ya deduplicados (un voto por usuario, sin el publicador).
+({double r, double s}) aggregateEvidence(
+  List<CommunityReport> reports,
+  DateTime reference,
+) {
+  var r = 0.0;
+  var s = 0.0;
+  for (final report in reports) {
+    final w = reportWeight(daysBetween(report.date, reference));
+    final v = evidenceValue(report.type);
+    r += w * v;
+    s += w * (1 - v);
+  }
+  return (r: r, s: s);
+}
+
+/// Confianza [0,1] a partir de la evidencia Beta: C = (r + 1) / (r + s + 2).
+double reliabilityFromEvidence(double r, double s) => (r + 1) / (r + s + 2);
+
+/// Confianza [0,1] a partir de los reportes ya deduplicados, evaluada en [now].
+double reliabilityFromReports(
   List<CommunityReport> reports, {
-  required DateTime publishedAt,
   DateTime? now,
 }) {
-  final current = now ?? DateTime.now();
-  double base;
-  DateTime since;
-  if (reports.isEmpty) {
-    base = 1.0;
-    since = publishedAt;
-  } else {
-    final latest = reports.reduce((a, b) => a.date.isAfter(b.date) ? a : b);
-    base = baseConfidence(latest.type);
-    since = latest.date;
-  }
-  return decayConfidence(base, daysBetween(since, current));
+  final evidence = aggregateEvidence(reports, now ?? DateTime.now());
+  return reliabilityFromEvidence(evidence.r, evidence.s);
+}
+
+/// Confianza [0,1] a partir de una evidencia agregada en [anchor], aplicando el
+/// decaimiento transcurrido hasta [now]. Permite recalcular en vivo sin volver a
+/// leer todos los reportes (tarjetas, mapa, perfil).
+double reliabilityFromAnchoredEvidence({
+  required double r,
+  required double s,
+  required DateTime anchor,
+  DateTime? now,
+}) {
+  final decay = reportWeight(daysBetween(anchor, now ?? DateTime.now()));
+  return reliabilityFromEvidence(r * decay, s * decay);
 }
 
 /// Traduce una confianza [0,1] al estado semaforo.
 PropertyStatus statusFromConfidence(double confidence) {
-  if (confidence >= kConfidenceVerifiedMin) return PropertyStatus.verificado;
-  if (confidence >= kConfidenceReviewMin) return PropertyStatus.enRevision;
-  return PropertyStatus.alerta;
+  if (confidence >= kConfidenceGreenMin) return PropertyStatus.verificado;
+  if (confidence <= kConfidenceRedMax) return PropertyStatus.alerta;
+  return PropertyStatus.enRevision;
+}
+
+/// Deja un solo voto por usuario (el mas reciente) y descarta los reportes del
+/// publicador de la propiedad. Los reportes sin [CommunityReport.authorId]
+/// (datos antiguos) se tratan como votos independientes usando su id de documento.
+List<CommunityReport> dedupeReports(
+  List<CommunityReport> reports, {
+  String publisherId = '',
+}) {
+  final latestByUser = <String, CommunityReport>{};
+  for (final report in reports) {
+    final author = report.authorId;
+    if (author.isNotEmpty && author == publisherId) continue;
+    final key = author.isNotEmpty ? author : 'anon:${report.id}';
+    final current = latestByUser[key];
+    if (current == null || report.date.isAfter(current.date)) {
+      latestByUser[key] = report;
+    }
+  }
+  return latestByUser.values.toList();
 }

@@ -9,6 +9,7 @@ import '../../models/property_type.dart';
 import '../../providers/ai_provider.dart';
 import '../../services/ai_service.dart';
 import '../../services/property_repository.dart';
+import '../../services/reliability.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../widgets/status_badge.dart';
@@ -43,8 +44,12 @@ class PropertyDetailScreen extends StatelessWidget {
           return StreamBuilder<List<CommunityReport>>(
             stream: repo.watchReports(propertyId),
             builder: (context, reportSnap) {
-              final property =
-                  base.copyWith(reports: reportSnap.data ?? const []);
+              // Un voto por usuario y sin el publicador para conteo, IA e historial.
+              final votes = dedupeReports(
+                reportSnap.data ?? const [],
+                publisherId: base.publisherId,
+              )..sort((a, b) => b.date.compareTo(a.date));
+              final property = base.copyWith(reports: votes);
               return _DetailContent(property: property, textTheme: textTheme);
             },
           );
