@@ -1,8 +1,8 @@
 # VivaCol
 
-<img width="720" height="1600" alt="view1" src="https://github.com/user-attachments/assets/64f208ee-11fd-426b-9a92-cca9370f50a7" />
+<img width="350" alt="view1" src="https://github.com/user-attachments/assets/6d12a058-9b07-403c-8744-bd89d66677fc" />
 
-<img width="720" height="1600" alt="view2" src="https://github.com/user-attachments/assets/0bbbfc60-a72a-452c-8baf-23fd87d88f41" />
+<img width="350" alt="view2" src="https://github.com/user-attachments/assets/a8ca20d9-8ff5-41af-b128-4f33d3994494" />
 
 Plataforma movil inmobiliaria colaborativa (estilo Waze, pero para inmuebles): la
 comunidad mantiene al dia la disponibilidad y fiabilidad de cada publicacion
