@@ -152,7 +152,4 @@ Incluye pruebas del semaforo y del modelo de decaimiento de la confianza.
   consola y que no se haya agotado la cuota gratuita (se restablece con el tiempo).
 - Si algo se rompe tras muchos cambios, prueba `flutter clean` y luego `flutter pub get`.
 
-
-https://github.com/user-attachments/assets/0c13f8ab-4066-4692-8216-ccd22e7cf439
-
-
+<video src="https://github.com/user-attachments/assets/0c13f8ab-4066-4692-8216-ccd22e7cf439" width="600" autoplay loop muted playsinline></video>
