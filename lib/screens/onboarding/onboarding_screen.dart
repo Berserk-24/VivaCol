@@ -12,66 +12,75 @@ class OnboardingScreen extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
-      backgroundColor: AppColors.primaryBlue,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            children: [
-              const Spacer(),
-              Container(
-                width: 96,
-                height: 96,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Image.asset('assets/icon/logo.png'),
-              ),
-              const SizedBox(height: 24),
-              RichText(
-                text: const TextSpan(
-                  children: [
-                    TextSpan(
-                      text: 'Viva',
-                      style: TextStyle(
-                        color: AppColors.white,
-                        fontSize: 40,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    TextSpan(
-                      text: 'Col',
-                      style: TextStyle(
-                        color: AppColors.accentGreen,
-                        fontSize: 40,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'La comunidad mantiene cada publicacion al dia. '
-                'Informacion inmobiliaria confiable y verificada.',
-                textAlign: TextAlign.center,
-                style: textTheme.bodyLarge?.copyWith(color: AppColors.white),
-              ),
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.white,
-                    foregroundColor: AppColors.primaryBlue,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.accentGreen, AppColors.primaryBlue],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              children: [
+                const Spacer(),
+                Container(
+                  width: 96,
+                  height: 96,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(24),
                   ),
-                  onPressed: () => context.go('/login'),
-                  child: const Text('Comenzar'),
+                  child: Image.asset('assets/icon/logo.png'),
                 ),
-              ),
-            ],
+                const SizedBox(height: 24),
+                RichText(
+                  text: const TextSpan(
+                    children: [
+                      TextSpan(
+                        text: 'Viva',
+                        style: TextStyle(
+                          color: AppColors.white,
+                          fontSize: 40,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      TextSpan(
+                        text: 'Col',
+                        style: TextStyle(
+                          color: AppColors.accentGreen,
+                          fontSize: 40,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'La comunidad mantiene cada publicacion al dia. '
+                  'Informacion inmobiliaria confiable y verificada.'
+                  'Agentes de IA te ayudan a encontrar el inmueble que buscas.',
+                  textAlign: TextAlign.center,
+                  style: textTheme.bodyLarge?.copyWith(color: AppColors.white),
+                ),
+                const Spacer(),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.white,
+                      foregroundColor: AppColors.primaryBlue,
+                    ),
+                    onPressed: () => context.go('/login'),
+                    child: const Text('Comenzar'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

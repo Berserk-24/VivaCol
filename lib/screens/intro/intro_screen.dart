@@ -56,7 +56,7 @@ class _IntroScreenState extends State<IntroScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color.fromARGB(255, 255, 255, 255),
       body: Stack(
         children: [
           Center(
@@ -73,10 +73,9 @@ class _IntroScreenState extends State<IntroScreen> {
             child: TextButton(
               onPressed: _finish,
               style: TextButton.styleFrom(
-                foregroundColor: Colors.white,
-                backgroundColor: Colors.black38,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+                foregroundColor: const Color.fromARGB(255, 0, 0, 0),
+                  backgroundColor: Color.fromARGB(78, 255, 255, 255),                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
                 ),
               ),
               child: const Text('Saltar'),
