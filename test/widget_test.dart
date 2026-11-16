@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vivacol/models/community_report.dart';
+import 'package:vivacol/models/property.dart';
 import 'package:vivacol/models/property_status.dart';
+import 'package:vivacol/models/property_type.dart';
 import 'package:vivacol/services/reliability.dart';
 
 // Momento fijo de referencia para que las pruebas sean deterministas.
@@ -22,6 +24,33 @@ CommunityReport _report(
     );
 
 void main() {
+  test('el número de contacto se conserva al serializar una propiedad', () {
+    final property = Property(
+      id: 'p1',
+      title: 'Apartamento',
+      description: '',
+      price: 100000000,
+      city: 'Bogota',
+      neighborhood: 'Chapinero',
+      type: PropertyType.apartamento,
+      listingType: ListingType.venta,
+      status: PropertyStatus.enRevision,
+      imageUrls: const [],
+      bedrooms: 2,
+      bathrooms: 1,
+      areaM2: 60,
+      publisherName: 'Publicante',
+      contactPhone: '+57 300 123 4567',
+      lastUpdated: _now,
+    );
+
+    final restored = Property.fromMap('p1', property.toMap());
+
+    expect(restored.contactPhone, '+57 300 123 4567');
+    expect(
+        restored.copyWith(reports: const []).contactPhone, '+57 300 123 4567');
+  });
+
   group('confianza (reputacion Beta con decaimiento)', () {
     test('sin reportes => C = 0.5 (en revision)', () {
       final c = reliabilityFromReports(const [], now: _now);

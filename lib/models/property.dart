@@ -24,6 +24,7 @@ class Property {
   final double? longitude;
   final String publisherId;
   final String publisherName;
+  final String contactPhone;
   final DateTime lastUpdated;
 
   /// Evidencia Beta agregada de los reportes, anclada en [lastUpdated].
@@ -52,6 +53,7 @@ class Property {
     this.longitude,
     this.publisherId = '',
     required this.publisherName,
+    this.contactPhone = '',
     required this.lastUpdated,
     this.evidenceR = 0,
     this.evidenceS = 0,
@@ -113,6 +115,7 @@ class Property {
       longitude: (map['longitude'] as num?)?.toDouble(),
       publisherId: (map['publisherId'] ?? '') as String,
       publisherName: (map['publisherName'] ?? '') as String,
+      contactPhone: (map['contactPhone'] ?? '') as String,
       lastUpdated: _parseDate(rawDate),
       evidenceR: (map['evidenceR'] ?? 0).toDouble() as double,
       evidenceS: (map['evidenceS'] ?? 0).toDouble() as double,
@@ -140,6 +143,7 @@ class Property {
       'longitude': longitude,
       'publisherId': publisherId,
       'publisherName': publisherName,
+      'contactPhone': contactPhone,
       'lastUpdated': lastUpdated.toIso8601String(),
       'evidenceR': evidenceR,
       'evidenceS': evidenceS,
@@ -151,6 +155,7 @@ class Property {
     double? evidenceR,
     double? evidenceS,
     List<CommunityReport>? reports,
+    String? contactPhone,
   }) {
     return Property(
       id: id,
@@ -172,6 +177,7 @@ class Property {
       longitude: longitude,
       publisherId: publisherId,
       publisherName: publisherName,
+      contactPhone: contactPhone ?? this.contactPhone,
       lastUpdated: lastUpdated,
       evidenceR: evidenceR ?? this.evidenceR,
       evidenceS: evidenceS ?? this.evidenceS,

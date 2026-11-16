@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show Factory, kIsWeb;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart' as geo;
@@ -35,6 +36,7 @@ class _PublishPropertyScreenState extends State<PublishPropertyScreen> {
   final TextEditingController _descController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _contactPhoneController = TextEditingController();
   final TextEditingController _bedroomsController = TextEditingController();
   final TextEditingController _bathroomsController = TextEditingController();
   final TextEditingController _areaController = TextEditingController();
@@ -155,6 +157,7 @@ class _PublishPropertyScreenState extends State<PublishPropertyScreen> {
     _descController.dispose();
     _priceController.dispose();
     _addressController.dispose();
+    _contactPhoneController.dispose();
     _bedroomsController.dispose();
     _bathroomsController.dispose();
     _areaController.dispose();
@@ -223,6 +226,7 @@ class _PublishPropertyScreenState extends State<PublishPropertyScreen> {
       longitude: _location?.longitude,
       publisherId: user.id,
       publisherName: user.name,
+      contactPhone: _contactPhoneController.text.trim(),
       lastUpdated: DateTime.now(),
     );
 
@@ -362,6 +366,20 @@ class _PublishPropertyScreenState extends State<PublishPropertyScreen> {
               validator: _required,
             ),
             const SizedBox(height: 16),
+            TextFormField(
+              controller: _contactPhoneController,
+              keyboardType: TextInputType.phone,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9+()\s-]')),
+              ],
+              decoration: const InputDecoration(
+                labelText: 'Número de contacto',
+                hintText: 'Ej: +57 300 123 4567',
+                prefixIcon: Icon(Icons.phone_outlined),
+              ),
+              validator: _contactPhoneValidator,
+            ),
+            const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               initialValue: _locality,
               isExpanded: true,
@@ -445,6 +463,15 @@ class _PublishPropertyScreenState extends State<PublishPropertyScreen> {
   String? _required(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'Campo obligatorio';
+    }
+    return null;
+  }
+
+  String? _contactPhoneValidator(String? value) {
+    final digits = (value ?? '').replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return 'Ingresa un número de contacto';
+    if (digits.length < 7 || digits.length > 15) {
+      return 'Ingresa un número válido (de 7 a 15 dígitos)';
     }
     return null;
   }
@@ -586,29 +613,90 @@ class _LocationPickerState extends State<_LocationPicker> {
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
         height: 220,
-        child: GoogleMap(
-          initialCameraPosition: const CameraPosition(
-            target: MapConfig.bogotaCenter,
-            zoom: MapConfig.defaultZoom,
-          ),
-          cameraTargetBounds: MapConfig.cameraBounds,
-          minMaxZoomPreference: MapConfig.zoomPreference,
-          myLocationButtonEnabled: false,
-          zoomControlsEnabled: false,
-          onMapCreated: (controller) => _controller = controller,
-          onTap: (point) {
-            if (!MapConfig.isInsideBogota(point)) return;
-            widget.onPicked(point);
-          },
-          markers: location == null
-              ? const {}
-              : {
-                  Marker(
-                    markerId: const MarkerId('seleccion'),
-                    position: location,
+        child: Stack(
+          children: [
+            GoogleMap(
+              initialCameraPosition: const CameraPosition(
+                target: MapConfig.bogotaCenter,
+                zoom: MapConfig.defaultZoom,
+              ),
+              cameraTargetBounds: MapConfig.cameraBounds,
+              minMaxZoomPreference: MapConfig.zoomPreference,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: false,
+              zoomGesturesEnabled: true,
+              scrollGesturesEnabled: true,
+              gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                Factory<OneSequenceGestureRecognizer>(
+                  () => EagerGestureRecognizer(),
+                ),
+              },
+              onMapCreated: (controller) => _controller = controller,
+              onTap: (point) {
+                if (!MapConfig.isInsideBogota(point)) return;
+                widget.onPicked(point);
+              },
+              markers: location == null
+                  ? const {}
+                  : {
+                      Marker(
+                        markerId: const MarkerId('seleccion'),
+                        position: location,
+                      ),
+                    },
+            ),
+            Positioned(
+              right: 8,
+              bottom: 8,
+              child: Column(
+                children: [
+                  _MapZoomButton(
+                    icon: Icons.add,
+                    tooltip: 'Acercar mapa',
+                    onPressed: () => _controller?.animateCamera(
+                      CameraUpdate.zoomIn(),
+                    ),
                   ),
-                },
+                  const SizedBox(height: 8),
+                  _MapZoomButton(
+                    icon: Icons.remove,
+                    tooltip: 'Alejar mapa',
+                    onPressed: () => _controller?.animateCamera(
+                      CameraUpdate.zoomOut(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class _MapZoomButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  const _MapZoomButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.white,
+      shape: const CircleBorder(),
+      elevation: 3,
+      child: IconButton(
+        icon: Icon(icon),
+        tooltip: tooltip,
+        onPressed: onPressed,
+        visualDensity: VisualDensity.compact,
       ),
     );
   }

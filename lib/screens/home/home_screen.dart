@@ -6,12 +6,14 @@ import '../../config/bogota_localities.dart';
 import '../../models/app_user.dart';
 import '../../models/property.dart';
 import '../../models/property_type.dart';
+import '../../providers/ai_property_search_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/property_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/price_range_dialog.dart';
 import '../../widgets/property_card.dart';
+import '../../widgets/ai_property_search_widgets.dart';
 
 /// Pantalla principal con buscador, filtros basicos y listado de propiedades.
 class HomeScreen extends StatefulWidget {
@@ -41,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _maxPrice != null;
 
   void _clearFilters() {
+    context.read<AiPropertySearchProvider>().clear();
     setState(() {
       _query = '';
       _searchController.clear();
@@ -71,11 +74,12 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  List<Property> _applyFilters(List<Property> all) {
+  List<Property> _applyFilters(List<Property> all, {String? queryOverride}) {
+    final searchQuery = queryOverride ?? _query;
     final result = all.where((p) {
-      final matchesQuery = _query.isEmpty ||
-          p.title.toLowerCase().contains(_query.toLowerCase()) ||
-          p.location.toLowerCase().contains(_query.toLowerCase());
+      final matchesQuery = searchQuery.isEmpty ||
+          p.title.toLowerCase().contains(searchQuery.toLowerCase()) ||
+          p.location.toLowerCase().contains(searchQuery.toLowerCase());
       final matchesCity =
           _selectedCity == 'Todas' || p.neighborhood == _selectedCity;
       final matchesType = _selectedType == null || p.type == _selectedType;
@@ -106,6 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final canPublish =
         context.watch<AuthProvider>().user?.role.canPublish ?? false;
+    final aiSearch = context.watch<AiPropertySearchProvider>();
     final repo = context.read<PropertyRepository>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -180,7 +185,12 @@ class _HomeScreenState extends State<HomeScreen> {
             selectedListing: _selectedListing,
             selectedSort: _sort,
             priceActive: _minPrice != null || _maxPrice != null,
-            onQueryChanged: (value) => setState(() => _query = value),
+            onQueryChanged: (value) {
+              setState(() => _query = value);
+              context.read<AiPropertySearchProvider>().updateInput(value);
+            },
+            onQuerySubmitted: (value) =>
+                context.read<AiPropertySearchProvider>().submit(value),
             onCityChanged: (value) =>
                 setState(() => _selectedCity = value ?? 'Todas'),
             onTypeChanged: (value) => setState(() => _selectedType = value),
@@ -201,8 +211,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (snapshot.hasError) {
                     return const _ErrorState();
                   }
-                  final filtered = _applyFilters(snapshot.data ?? const []);
-                  if (filtered.isEmpty) {
+                  final filtered = _applyFilters(
+                    snapshot.data ?? const [],
+                    queryOverride: aiSearch.isActive ? '' : null,
+                  );
+                  if (filtered.isEmpty && !aiSearch.isActive) {
                     return _EmptyState(
                       onClear: _hasActiveFilters ? _clearFilters : null,
                     );
@@ -236,17 +249,29 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       Expanded(
-                        child: ListView.builder(
+                        child: ListView(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
-                          itemCount: filtered.length,
-                          itemBuilder: (context, index) {
-                            final property = filtered[index];
-                            return PropertyCard(
-                              property: property,
-                              onTap: () =>
-                                  context.push('/property/${property.id}'),
-                            );
-                          },
+                          children: [
+                            if (aiSearch.isActive)
+                              AiPropertySearchResults(search: aiSearch),
+                            if (aiSearch.isActive && filtered.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(0, 8, 0, 12),
+                                child: Text(
+                                  'Publicaciones de VivaCol',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(color: AppColors.darkGray),
+                                ),
+                              ),
+                            for (final property in filtered)
+                              PropertyCard(
+                                property: property,
+                                onTap: () =>
+                                    context.push('/property/${property.id}'),
+                              ),
+                          ],
                         ),
                       ),
                     ],
@@ -269,6 +294,7 @@ class _SearchAndFilters extends StatelessWidget {
   final String selectedSort;
   final bool priceActive;
   final ValueChanged<String> onQueryChanged;
+  final ValueChanged<String> onQuerySubmitted;
   final ValueChanged<String?> onCityChanged;
   final ValueChanged<PropertyType?> onTypeChanged;
   final ValueChanged<ListingType?> onListingChanged;
@@ -283,6 +309,7 @@ class _SearchAndFilters extends StatelessWidget {
     required this.selectedSort,
     required this.priceActive,
     required this.onQueryChanged,
+    required this.onQuerySubmitted,
     required this.onCityChanged,
     required this.onTypeChanged,
     required this.onListingChanged,
@@ -301,8 +328,10 @@ class _SearchAndFilters extends StatelessWidget {
           TextField(
             controller: controller,
             onChanged: onQueryChanged,
+            onSubmitted: onQuerySubmitted,
+            textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Buscar por titulo o ubicacion',
+              hintText: 'Buscar por titulo o escribe ia: para buscar en la web',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: controller.text.isEmpty
                   ? null

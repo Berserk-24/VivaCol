@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -557,7 +558,7 @@ class _ContactBar extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Padding(
+      builder: (sheetContext) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -573,17 +574,37 @@ class _ContactBar extends StatelessWidget {
               subtitle: const Text('Publicante verificado'),
             ),
             const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.call),
-                label: const Text('Llamar ahora'),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.phone_outlined),
+              title: Text(
+                property.contactPhone.isEmpty
+                    ? 'Número no registrado'
+                    : property.contactPhone,
               ),
+              subtitle: const Text('Número de contacto'),
+              trailing: IconButton(
+                tooltip: 'Copiar número',
+                onPressed: property.contactPhone.isEmpty
+                    ? null
+                    : () => _copyContact(context, property.contactPhone),
+                icon: const Icon(Icons.copy),
+              ),
+              onTap: property.contactPhone.isEmpty
+                  ? null
+                  : () => _copyContact(context, property.contactPhone),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _copyContact(BuildContext context, String phone) async {
+    await Clipboard.setData(ClipboardData(text: phone));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Número copiado.')),
     );
   }
 }

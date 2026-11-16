@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../models/ai_property_search.dart';
 import '../../models/app_user.dart';
 import '../../models/property.dart';
 import '../../providers/ai_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/property_repository.dart';
+import '../../services/saved_ai_listings_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../widgets/status_badge.dart';
@@ -89,6 +92,8 @@ class ProfileScreen extends StatelessWidget {
               'cambios para ayudar a la comunidad.',
               style: textTheme.bodyMedium,
             ),
+          const SizedBox(height: 20),
+          _SavedAiListingsSection(userId: user.id),
           const SizedBox(height: 24),
           Card(
             child: SwitchListTile(
@@ -147,6 +152,94 @@ class ProfileScreen extends StatelessWidget {
     if (confirmed == true && context.mounted) {
       await context.read<AuthProvider>().signOut();
     }
+  }
+}
+
+class _SavedAiListingsSection extends StatefulWidget {
+  final String userId;
+
+  const _SavedAiListingsSection({required this.userId});
+
+  @override
+  State<_SavedAiListingsSection> createState() =>
+      _SavedAiListingsSectionState();
+}
+
+class _SavedAiListingsSectionState extends State<_SavedAiListingsSection> {
+  Stream<List<SavedAiPropertyListing>>? _stream;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _stream ??=
+        context.read<SavedAiListingsRepository>().watchForUser(widget.userId);
+  }
+
+  String _formatDate(DateTime date) {
+    final local = date.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    return '$day/$month/${local.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final repository = context.read<SavedAiListingsRepository>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Avisos web guardados',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        StreamBuilder<List<SavedAiPropertyListing>>(
+          stream: _stream,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return const Text('No se pudieron cargar los avisos guardados.');
+            }
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final savedListings = snapshot.data!;
+            if (savedListings.isEmpty) {
+              return const Text('Aún no tienes avisos web guardados.');
+            }
+            return Column(
+              children: savedListings.map((listing) {
+                final price = listing.priceCop == null
+                    ? 'Precio no publicado'
+                    : formatPrice(listing.priceCop!.toDouble());
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading:
+                      const Icon(Icons.bookmark, color: AppColors.statusReview),
+                  title: Text(listing.title),
+                  subtitle: Text(
+                    '$price\nGuardado el ${_formatDate(listing.savedAt)}. '
+                    'Puede haber cambiado: consulte el enlace original.',
+                  ),
+                  isThreeLine: true,
+                  onTap: () => launchUrl(
+                    listing.url,
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'Quitar de guardados',
+                    onPressed: () => repository.remove(
+                      widget.userId,
+                      listing.url,
+                    ),
+                    icon: const Icon(Icons.bookmark_remove_outlined),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
+    );
   }
 }
 

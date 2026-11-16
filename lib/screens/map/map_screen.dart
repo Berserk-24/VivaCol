@@ -4,11 +4,14 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/map_config.dart';
+import '../../models/ai_property_search.dart';
 import '../../models/property.dart';
 import '../../models/property_status.dart';
 import '../../models/property_type.dart';
+import '../../providers/ai_property_search_provider.dart';
 import '../../services/property_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/price_range_dialog.dart';
@@ -177,8 +180,11 @@ class _NearbyMapState extends State<_NearbyMap> {
     }
   }
 
-  Set<Marker> _buildMarkers(List<Property> properties) {
-    return properties.map((p) {
+  Set<Marker> _buildMarkers(
+    List<Property> properties,
+    List<AiPropertySearchListing> aiListings,
+  ) {
+    final markers = properties.map((p) {
       return Marker(
         markerId: MarkerId(p.id),
         position: LatLng(p.latitude!, p.longitude!),
@@ -190,11 +196,43 @@ class _NearbyMapState extends State<_NearbyMap> {
         ),
       );
     }).toSet();
+
+    for (final listing in aiListings) {
+      final latitude = listing.latitude;
+      final longitude = listing.longitude;
+      if (latitude == null || longitude == null) continue;
+      markers.add(
+        Marker(
+          markerId: MarkerId('ai-${listing.url.hashCode}'),
+          position: LatLng(latitude, longitude),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueYellow,
+          ),
+          infoWindow: InfoWindow(
+            title: listing.title,
+            snippet: 'Resultado web · ${listing.source} · no verificado',
+            onTap: () async {
+              await launchUrl(
+                listing.url,
+                mode: LaunchMode.externalApplication,
+              );
+            },
+          ),
+        ),
+      );
+    }
+    return markers;
   }
 
   @override
   Widget build(BuildContext context) {
     final repo = context.read<PropertyRepository>();
+    final aiSearch = context.watch<AiPropertySearchProvider>();
+    final aiListings = aiSearch.response?.listings ?? const [];
+    final locatedAiListings = aiListings
+        .where(
+            (listing) => listing.latitude != null && listing.longitude != null)
+        .toList();
     return Column(
       children: [
         _MapFilters(
@@ -208,6 +246,22 @@ class _NearbyMapState extends State<_NearbyMap> {
           onListingChanged: (value) => setState(() => _listing = value),
           onPriceTap: _editPrice,
         ),
+        if (aiSearch.isActive)
+          Container(
+            width: double.infinity,
+            color: AppColors.statusReviewBg,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              aiSearch.loading
+                  ? 'Buscando avisos web para: ${aiSearch.request}'
+                  : 'Resultados web IA: ${locatedAiListings.length} '
+                      'con ubicación · marcadores amarillos',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: AppColors.darkGray),
+            ),
+          ),
         if (_locMessage != null)
           Container(
             width: double.infinity,
@@ -268,13 +322,13 @@ class _NearbyMapState extends State<_NearbyMap> {
                             ),
                           }
                         : const <Circle>{},
-                    markers: _buildMarkers(filtered),
+                    markers: _buildMarkers(filtered, aiListings),
                   ),
                   Positioned(
                     left: 12,
                     top: 12,
                     child: _CountChip(
-                      count: filtered.length,
+                      count: filtered.length + locatedAiListings.length,
                       nearby: _onlyNearby && _userPos != null,
                     ),
                   ),

@@ -103,26 +103,7 @@ $reportLines
       debugPrint('Causa: $e');
       debugPrint(
           '==========================================================\n');
-      final detail = e.toString().toLowerCase();
-      if (detail.contains('429') ||
-          detail.contains('quota') ||
-          detail.contains('resource_exhausted') ||
-          detail.contains('rate limit')) {
-        throw const AiException(
-          'Alcanzaste el limite gratuito de IA por ahora. '
-          'Espera unos minutos e intenta de nuevo.',
-        );
-      }
-      if (detail.contains('500') ||
-          detail.contains('503') ||
-          detail.contains('high demand') ||
-          detail.contains('unavailable')) {
-        throw const AiException(
-          'El servicio de IA esta saturado en este momento. '
-          'Intenta de nuevo en unos segundos.',
-        );
-      }
-      throw AiException('No se pudo generar el $label. Intenta de nuevo.');
+      throw AiException.fromGenerationError(e, operation: label);
     }
   }
 }
@@ -131,6 +112,32 @@ $reportLines
 class AiException implements Exception {
   final String message;
   const AiException(this.message);
+
+  factory AiException.fromGenerationError(
+    Object error, {
+    required String operation,
+  }) {
+    final detail = error.toString().toLowerCase();
+    if (detail.contains('429') ||
+        detail.contains('quota') ||
+        detail.contains('resource_exhausted') ||
+        detail.contains('rate limit')) {
+      return const AiException(
+        'Alcanzaste el limite gratuito de IA por ahora. '
+        'Espera unos minutos e intenta de nuevo.',
+      );
+    }
+    if (detail.contains('500') ||
+        detail.contains('503') ||
+        detail.contains('high demand') ||
+        detail.contains('unavailable')) {
+      return const AiException(
+        'El servicio de IA esta saturado en este momento. '
+        'Intenta de nuevo en unos segundos.',
+      );
+    }
+    return AiException('No se pudo generar el $operation. Intenta de nuevo.');
+  }
 
   @override
   String toString() => message;

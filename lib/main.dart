@@ -7,12 +7,15 @@ import 'package:provider/provider.dart';
 
 import 'firebase_options.dart';
 import 'providers/ai_provider.dart';
+import 'providers/ai_property_search_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
 import 'router/app_router.dart';
 import 'services/ai_service.dart';
+import 'services/ai_property_search_service.dart';
 import 'services/auth_service.dart';
 import 'services/property_repository.dart';
+import 'services/saved_ai_listings_repository.dart';
 import 'services/storage_service.dart';
 import 'theme/app_theme.dart';
 
@@ -41,8 +44,19 @@ class VivaColApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         Provider<PropertyRepository>(create: (_) => PropertyRepository()),
+        Provider<SavedAiListingsRepository>(
+          create: (_) => SavedAiListingsRepository(),
+        ),
         Provider<StorageService>(create: (_) => StorageService()),
         Provider<AiService>(create: (_) => AiService()),
+        Provider<AiPropertySearchService>(
+          create: (_) => AiPropertySearchService(),
+          dispose: (_, service) => service.dispose(),
+        ),
+        ChangeNotifierProvider<AiPropertySearchProvider>(
+          create: (context) =>
+              AiPropertySearchProvider(context.read<AiPropertySearchService>()),
+        ),
         ChangeNotifierProvider<AuthProvider>(
           create: (_) => AuthProvider(AuthService()),
         ),
