@@ -1,5 +1,9 @@
 # VivaCol
 
+<img width="350" alt="view1" src="https://github.com/user-attachments/assets/6d12a058-9b07-403c-8744-bd89d66677fc" />
+
+<img width="350" alt="view2" src="https://github.com/user-attachments/assets/a8ca20d9-8ff5-41af-b128-4f33d3994494" />
+
 Plataforma movil inmobiliaria colaborativa (estilo Waze, pero para inmuebles): la
 comunidad mantiene al dia la disponibilidad y fiabilidad de cada publicacion
 mediante reportes. Cada aviso tiene un estado tipo semaforo que ademas **decae con
@@ -147,3 +151,6 @@ Incluye pruebas del semaforo y del modelo de decaimiento de la confianza.
 - Si las funciones de IA fallan, revisa que "Firebase AI Logic" este habilitado en la
   consola y que no se haya agotado la cuota gratuita (se restablece con el tiempo).
 - Si algo se rompe tras muchos cambios, prueba `flutter clean` y luego `flutter pub get`.
+
+<img width="600" height="338" alt="iconVivaCol" src="https://github.com/user-attachments/assets/7419f6ff-73c5-45f8-b09e-92264dcfb032" />
+
