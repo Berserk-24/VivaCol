@@ -178,6 +178,7 @@ class _AiPropertySearchListingCardState
   }
 
   Future<void> _loadSavedState() async {
+    if (widget.listing.isListingPage) return;
     final userId = context.read<AuthProvider>().user?.id;
     if (userId == null) return;
     try {
@@ -323,9 +324,11 @@ class _AiPropertySearchListingCardState
                               color: AppColors.statusReviewBg,
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Text(
-                              'En revisión',
-                              style: TextStyle(
+                            child: Text(
+                              listing.isListingPage
+                                  ? 'Lista del portal'
+                                  : 'En revisión',
+                              style: const TextStyle(
                                 color: AppColors.statusReview,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
@@ -343,9 +346,11 @@ class _AiPropertySearchListingCardState
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        listing.priceCop == null
-                            ? 'Precio no publicado'
-                            : formatPrice(listing.priceCop!.toDouble()),
+                        listing.isListingPage
+                            ? 'Explorar avisos en el portal'
+                            : listing.priceCop == null
+                                ? 'Precio no publicado'
+                                : formatPrice(listing.priceCop!.toDouble()),
                         style: textTheme.titleMedium?.copyWith(
                           color: AppColors.primaryBlue,
                         ),
@@ -364,8 +369,11 @@ class _AiPropertySearchListingCardState
             ),
             const SizedBox(height: 8),
             Text(
-              'Resultado de la web, no verificado por la comunidad. '
-              'Fuente: ${_portalName(listing.source)}',
+              listing.isListingPage
+                  ? 'Página de resultados de ${_portalName(listing.source)}; '
+                      'no es un aviso individual.'
+                  : 'Resultado de la web, no verificado por la comunidad. '
+                      'Fuente: ${_portalName(listing.source)}',
               style: textTheme.bodySmall,
             ),
             if (!listing.linkVerified)
@@ -377,7 +385,7 @@ class _AiPropertySearchListingCardState
               ),
             if (listing.approximateLocation)
               Text('Ubicación aproximada.', style: textTheme.bodySmall),
-            if (listing.missingData.isNotEmpty)
+            if (!listing.isListingPage && listing.missingData.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
@@ -393,23 +401,30 @@ class _AiPropertySearchListingCardState
                   child: OutlinedButton.icon(
                     onPressed: _openListing,
                     icon: const Icon(Icons.open_in_new),
-                    label: const Text('Ver publicación original'),
+                    label: Text(
+                      listing.isListingPage
+                          ? 'Ver resultados'
+                          : 'Ver publicación original',
+                    ),
                   ),
                 ),
-                const SizedBox(width: 4),
-                IconButton(
-                  onPressed: _saving ? null : _toggleSaved,
-                  tooltip: _isSaved ? 'Quitar de guardados' : 'Guardar aviso',
-                  icon: _saving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(
-                          _isSaved ? Icons.bookmark : Icons.bookmark_border,
-                        ),
-                ),
+                if (!listing.isListingPage) ...[
+                  const SizedBox(width: 4),
+                  IconButton(
+                    onPressed: _saving ? null : _toggleSaved,
+                    tooltip:
+                        _isSaved ? 'Quitar de guardados' : 'Guardar aviso',
+                    icon: _saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            _isSaved ? Icons.bookmark : Icons.bookmark_border,
+                          ),
+                  ),
+                ],
               ],
             ),
           ],

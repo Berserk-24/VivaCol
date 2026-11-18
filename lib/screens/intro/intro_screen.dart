@@ -74,7 +74,7 @@ class _IntroScreenState extends State<IntroScreen> {
               onPressed: _finish,
               style: TextButton.styleFrom(
                 foregroundColor: const Color.fromARGB(255, 255, 255, 255),
-                  backgroundColor: Color.fromARGB(121, 0, 0, 0),                shape: RoundedRectangleBorder(
+                  backgroundColor: const Color.fromARGB(121, 0, 0, 0),                shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                 ),
               ),

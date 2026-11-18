@@ -50,7 +50,10 @@ class VivaColApp extends StatelessWidget {
         Provider<StorageService>(create: (_) => StorageService()),
         Provider<AiService>(create: (_) => AiService()),
         Provider<AiPropertySearchService>(
-          create: (_) => AiPropertySearchService(),
+          create: (_) => AiPropertySearchService(
+            //modelName: 'gemini-3.8-flash',
+            logDiagnosticDetails: true,
+          ),
           dispose: (_, service) => service.dispose(),
         ),
         ChangeNotifierProvider<AiPropertySearchProvider>(

@@ -19,12 +19,27 @@ void main() {
       }
     });
 
-    test('rechaza rutas de busqueda, listados y categorias', () {
+    test('acepta paginas de resultados solo para portales y Bogota', () {
+      const listingUrls = [
+        'https://www.fincaraiz.com.co/venta/inmuebles/bogota',
+        'https://www.fincaraiz.com.co/arriendo/apartamentos/puente-grande/zona-occidental/bogota',
+        'https://www.metrocuadrado.com/arriendo/apartamentos/bogota',
+        'https://www.ciencuadras.com/arriendo/bogota/fontibon/cjr-ibiza-iii-y-iv/apartamento',
+      ];
+
+      for (final url in listingUrls) {
+        final classification = classifyAiPropertySearchUrl(url);
+        expect(classification, isNotNull, reason: url);
+        expect(classification!.isListingPage, isTrue, reason: url);
+        expect(classification.matchesIndividualPattern, isFalse, reason: url);
+      }
+    });
+
+    test('rechaza rutas genericas sin ciudad o sin criterios inmobiliarios',
+        () {
       const rejectedUrls = [
         'https://www.fincaraiz.com.co/venta/apartamentos',
-        'https://www.fincaraiz.com.co/venta/inmuebles/bogota',
-        'https://www.fincaraiz.com.co/arriendo/apartamentos/bogota/sotomayor',
-        'https://www.ciencuadras.com/arriendo/bogota/fontibon/cjr-ibiza-iii-y-iv/apartamento',
+        'https://www.fincaraiz.com.co/buscar/apartamento/bogota',
       ];
 
       for (final url in rejectedUrls) {
@@ -56,6 +71,7 @@ void main() {
 
       expect(classification, isNotNull);
       expect(classification!.matchesIndividualPattern, isFalse);
+      expect(classification.isListingPage, isFalse);
     });
 
     test('rechaza esquemas no seguros y hosts de redireccion de grounding', () {

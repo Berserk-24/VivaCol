@@ -1,5 +1,5 @@
 import 'package:firebase_ai/firebase_ai.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 
 import '../models/community_report.dart';
 import '../models/property.dart';
@@ -12,12 +12,13 @@ import '../utils/format.dart';
 class AiService {
   /// Modelo a usar. Si falla por disponibilidad, cambialo por otro Flash
   /// disponible en tu proyecto (p. ej. 'gemini-2.5-flash' o 'gemini-flash-latest').
-  static const _modelName = 'gemini-3.8-flash';
+  static const _modelName = 'gemini-3.5-flash-lite';
 
   GenerativeModel? _model;
 
-  GenerativeModel get _gemini =>
-      _model ??= FirebaseAI.googleAI().generativeModel(model: _modelName);
+  GenerativeModel get _gemini => _model ??= FirebaseAI.googleAI(
+        useLimitedUseAppCheckTokens: !kIsWeb,
+      ).generativeModel(model: _modelName);
 
   /// Genera una descripcion comercial a partir de los datos del formulario.
   Future<String> generateDescription({

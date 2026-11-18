@@ -73,6 +73,7 @@ class AiPropertySearchListing {
   final bool approximateLocation;
   final double? latitude;
   final double? longitude;
+  final bool isListingPage;
 
   const AiPropertySearchListing({
     required this.title,
@@ -91,6 +92,7 @@ class AiPropertySearchListing {
     required this.approximateLocation,
     required this.latitude,
     required this.longitude,
+    this.isListingPage = false,
   });
 }
 

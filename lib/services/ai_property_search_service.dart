@@ -93,7 +93,7 @@ const String noAiPropertySearchResultsMessage =
     'No se encontraron resultados apropiados con estas especificaciones.\n'
     'Intenta hacer una petición distinta.';
 
-const String _searchModelName = 'gemini-3.8-flash';
+const String _defaultSearchModelName = 'gemini-3.5-flash-lite';
 const Duration _requestTimeout = Duration(seconds: 5);
 const String _vertexRedirectHost = 'vertexaisearch.cloud.google.com';
 
@@ -101,17 +101,22 @@ const String _searchSystemInstruction = '''
 Eres un asistente de búsqueda inmobiliaria para VivaCol, una app de Bogotá, Colombia.
 
 TAREA
-Interpreta la petición del usuario y usa la búsqueda web en esta misma respuesta para encontrar hasta 5 avisos REALES de inmuebles en Bogotá. Hazlo todo en una sola respuesta, sin hacer preguntas ni pedir confirmaciones.
+Interpreta la petición del usuario y usa la búsqueda web en esta misma respuesta para encontrar hasta 5 resultados inmobiliarios en Bogotá. Prioriza avisos individuales. Hazlo todo en una sola respuesta, sin hacer preguntas ni pedir confirmaciones.
 
 REGLAS DE BÚSQUEDA
+- Antes de redactar, busca avisos actuales con Google Search. No uses conocimiento previo ni inventes resultados.
+- Incluye únicamente avisos encontrados en los resultados de búsqueda, con una URL exacta de la fuente. Si no puedes verificar avisos actuales, devuelve "resultados": [] y explícalo en "mensaje".
 - Solo inmuebles ubicados en Bogotá, Colombia. Si la petición es de otra ciudad, devuelve "resultados": [] y explícalo en "mensaje".
 - Solo avisos publicados en fincaraiz.com.co, metrocuadrado.com o ciencuadras.com.
 - Interpreta el precio como MÁXIMO. Si el usuario no dice si es venta o arriendo, deduce por el monto (cientos de millones suelen ser venta; pocos millones suelen ser arriendo mensual) y registra la deducción en "supuestos".
 - Si el usuario indica un barrio o una localidad, busca avisos ahí.
 
 REGLAS DE ENLACE (MUY IMPORTANTES)
-- "url" debe ser el enlace directo a la página de detalle de ESE aviso. No uses la página principal, un buscador, un listado ni una categoría.
-- Copia la URL exactamente como la encontraste. Nunca la construyas ni la completes. Si no encontraste el enlace directo del aviso, no incluyas ese aviso.
+- Prioriza enlaces directos a páginas de detalle de avisos individuales.
+- Si no encuentras avisos individuales suficientes en un portal, incluye como último recurso máximo una página de resultados/categoría de ese portal para intentar extraer un aviso individual.
+- Ordena los avisos individuales antes que las páginas de resultados. Si solo encuentras páginas de resultados, incluye una por cada portal disponible, sin superar 5 resultados.
+- No uses páginas principales. Una página de resultados nunca debe describirse como si fuera un aviso individual.
+- Copia cada URL exactamente como la encontraste. Nunca la construyas ni la completes.
 
 REGLAS DE DATOS
 - Nunca inventes datos. Si un dato no aparece en la fuente, déjalo en null y agrega su nombre a "datosNoObtenidos".
@@ -293,10 +298,7 @@ AiPropertySearchUrlClassification? classifyAiPropertySearchUrl(String value) {
       .where((segment) => segment.isNotEmpty)
       .map(_normalizePathSegment)
       .toList();
-  if (segments.isEmpty ||
-      segments.any(AiPropertySearchUrlPatterns.indexRouteNames.contains)) {
-    return null;
-  }
+  if (segments.isEmpty) return null;
   if (_pathNamesOtherCity(segments)) return null;
 
   final individualPattern = switch (source) {
@@ -313,6 +315,16 @@ AiPropertySearchUrlClassification? classifyAiPropertySearchUrl(String value) {
       uri: uri,
       source: source,
       matchesIndividualPattern: true,
+      isListingPage: false,
+    );
+  }
+
+  if (_matchesPortalListingPage(segments)) {
+    return AiPropertySearchUrlClassification(
+      uri: uri,
+      source: source,
+      matchesIndividualPattern: false,
+      isListingPage: true,
     );
   }
 
@@ -321,6 +333,7 @@ AiPropertySearchUrlClassification? classifyAiPropertySearchUrl(String value) {
     uri: uri,
     source: source,
     matchesIndividualPattern: false,
+    isListingPage: false,
   );
 }
 
@@ -342,6 +355,38 @@ bool _pathNamesOtherCity(List<String> segments) {
     }
   }
   return false;
+}
+
+bool _matchesPortalListingPage(List<String> segments) {
+  if (segments.length < 3) return false;
+  final finalSegment = segments.last;
+  final finalWords = finalSegment.split('-').where((word) => word.isNotEmpty);
+  if (RegExp(r'\d{5,}').hasMatch(finalSegment) ||
+      (finalSegment.length >= 28 && finalWords.length >= 5)) {
+    return false;
+  }
+  final tokens = segments
+      .expand((segment) => segment.split(RegExp(r'[^a-z0-9]+')))
+      .where((token) => token.isNotEmpty)
+      .toSet();
+  const operations = {'arriendo', 'venta'};
+  const propertyTypes = {
+    'apartamento',
+    'apartamentos',
+    'casa',
+    'casas',
+    'finca',
+    'fincas',
+    'inmueble',
+    'inmuebles',
+    'local',
+    'locales',
+    'oficina',
+    'oficinas',
+  };
+  return tokens.contains('bogota') &&
+      tokens.any(operations.contains) &&
+      tokens.any(propertyTypes.contains);
 }
 
 bool _passesConservativeHeuristic(List<String> segments) {
@@ -368,11 +413,13 @@ class AiPropertySearchUrlClassification {
   final Uri uri;
   final String source;
   final bool matchesIndividualPattern;
+  final bool isListingPage;
 
   const AiPropertySearchUrlClassification({
     required this.uri,
     required this.source,
     required this.matchesIndividualPattern,
+    required this.isListingPage,
   });
 }
 
@@ -391,23 +438,39 @@ String? _unsupportedCity(String query) {
 class _ResolvedLink {
   final Uri uri;
   final bool verified;
+  final bool isListingPage;
 
-  const _ResolvedLink(this.uri, this.verified);
+  const _ResolvedLink(
+    this.uri,
+    this.verified, {
+    this.isListingPage = false,
+  });
 }
 
 class AiPropertySearchService {
-  AiPropertySearchService({http.Client? client})
-      : _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  AiPropertySearchService({
+    http.Client? client,
+    String modelName = _defaultSearchModelName,
+    bool useGoogleSearch = true,
+    bool logDiagnosticDetails = false,
+  })  : _client = client ?? http.Client(),
+        _ownsClient = client == null,
+        _modelName = modelName,
+        _useGoogleSearch = useGoogleSearch,
+        _logDiagnosticDetails = logDiagnosticDetails;
 
   final http.Client _client;
   final bool _ownsClient;
+  final String _modelName;
+  final bool _useGoogleSearch;
+  final bool _logDiagnosticDetails;
   GenerativeModel? _model;
 
-  GenerativeModel get _searchModel =>
-      _model ??= FirebaseAI.googleAI().generativeModel(
-        model: _searchModelName,
-        tools: [Tool.googleSearch()],
+  GenerativeModel get _searchModel => _model ??= FirebaseAI.googleAI(
+        useLimitedUseAppCheckTokens: !kIsWeb,
+      ).generativeModel(
+        model: _modelName,
+        tools: _useGoogleSearch ? [Tool.googleSearch()] : const [],
         systemInstruction: Content.text(_searchSystemInstruction),
       );
 
@@ -426,17 +489,24 @@ class AiPropertySearchService {
       final candidate =
           response.candidates.isEmpty ? null : response.candidates.first;
       final metadata = candidate?.groundingMetadata;
-      if (metadata == null || metadata.webSearchQueries.isEmpty) {
-        return const AiPropertySearchResponse(
-          message: noAiPropertySearchResultsMessage,
+      if (_logDiagnosticDetails) {
+        debugPrint('VivaCol búsqueda IA: modelo: $_modelName');
+        debugPrint(
+          'VivaCol búsqueda IA: Google Search: '
+          '${_useGoogleSearch ? 'activado' : 'desactivado'}',
+        );
+        debugPrint('VivaCol búsqueda IA: respuesta: ${response.text}');
+        debugPrint(
+          'VivaCol búsqueda IA: grounding metadata: ${metadata != null}',
         );
       }
+      final grounded = metadata != null && metadata.webSearchQueries.isNotEmpty;
 
       final otherCity = _unsupportedCity(query);
       if (otherCity != null) {
         return AiPropertySearchResponse(
-          grounded: true,
-          searchEntryPointHtml: metadata.searchEntryPoint?.renderedContent,
+          grounded: grounded,
+          searchEntryPointHtml: metadata?.searchEntryPoint?.renderedContent,
           message:
               'Por ahora la búsqueda inmobiliaria con IA solo admite Bogotá. '
               'La solicitud menciona $otherCity.',
@@ -446,19 +516,76 @@ class AiPropertySearchService {
       final parsed = parseAiPropertySearchJson(response.text ?? '');
       if (parsed == null) {
         return AiPropertySearchResponse(
-          grounded: true,
-          searchEntryPointHtml: metadata.searchEntryPoint?.renderedContent,
+          grounded: grounded,
+          searchEntryPointHtml: metadata?.searchEntryPoint?.renderedContent,
           message: noAiPropertySearchResultsMessage,
         );
       }
 
-      final listings = <AiPropertySearchListing>[];
+      final individualListings = <AiPropertySearchListing>[];
+      final listPageFallbacks = <String, AiPropertySearchListing>{};
+      final individualSources = <String>{};
       final seenUrls = <String>{};
       for (final item in parsed.candidates) {
-        final link = await _resolveListingLink(item, metadata.groundingChunks);
-        if (link == null || !seenUrls.add(link.uri.toString())) continue;
+        final link = await _resolveListingLink(
+          item,
+          metadata?.groundingChunks ?? const <GroundingChunk>[],
+        );
+        if (link == null) continue;
+        final source = _sourceForHost(link.uri.host);
+        if (source == null) continue;
+
+        if (link.isListingPage) {
+          final extracted = await _extractIndividualListingLink(
+            link.uri,
+            source,
+          );
+          if (extracted != null) {
+            individualSources.add(source);
+            if (seenUrls.add(extracted.uri.toString())) {
+              individualListings.add(
+                AiPropertySearchListing(
+                  title: extracted.title.isEmpty
+                      ? 'Aviso individual en Bogotá'
+                      : extracted.title,
+                  propertyType: item.propertyType,
+                  operation: item.operation,
+                  priceCop: null,
+                  areaM2: null,
+                  bedrooms: null,
+                  bathrooms: null,
+                  address: null,
+                  neighborhood: null,
+                  url: extracted.uri,
+                  source: source,
+                  missingData: const [
+                    'precioCOP',
+                    'areaM2',
+                    'habitaciones',
+                    'banos',
+                    'direccion',
+                    'barrio',
+                  ],
+                  linkVerified: extracted.verified,
+                  approximateLocation: false,
+                  latitude: null,
+                  longitude: null,
+                ),
+              );
+            }
+          } else {
+            listPageFallbacks.putIfAbsent(
+              source,
+              () => _createListPageFallback(item, link, source),
+            );
+          }
+          continue;
+        }
+
+        if (!seenUrls.add(link.uri.toString())) continue;
         final location = await _geocode(item);
-        listings.add(
+        individualSources.add(source);
+        individualListings.add(
           AiPropertySearchListing(
             title: item.title,
             propertyType: item.propertyType,
@@ -470,7 +597,7 @@ class AiPropertySearchService {
             address: item.address,
             neighborhood: item.neighborhood,
             url: link.uri,
-            source: _sourceForHost(link.uri.host)!,
+            source: source,
             missingData: item.missingData,
             linkVerified: link.verified,
             approximateLocation: location.approximate,
@@ -478,20 +605,34 @@ class AiPropertySearchService {
             longitude: location.longitude,
           ),
         );
-        if (listings.length == 5) break;
       }
 
-      final message =
-          listings.isEmpty ? noAiPropertySearchResultsMessage : parsed.message;
+      final listings = <AiPropertySearchListing>[
+        ...individualListings,
+        ...listPageFallbacks.entries
+            .where((entry) => !individualSources.contains(entry.key))
+            .map((entry) => entry.value),
+      ].take(5).toList(growable: false);
+      final message = listings.isEmpty
+          ? noAiPropertySearchResultsMessage
+          : grounded
+              ? parsed.message
+              : 'No se recibió metadata de Google Search. '
+                  'Verifica la información en cada enlace.';
       return AiPropertySearchResponse(
         listings: listings,
         interpretation: parsed.interpretation,
-        grounded: true,
-        searchEntryPointHtml: metadata.searchEntryPoint?.renderedContent,
+        grounded: grounded,
+        searchEntryPointHtml: metadata?.searchEntryPoint?.renderedContent,
         message: message,
       );
     } catch (error) {
-      debugPrint('VivaCol búsqueda IA: $error');
+      debugPrint('VivaCol búsqueda IA: error completo: $error');
+      debugPrint('VivaCol búsqueda IA: modelo: $_modelName');
+      debugPrint(
+        'VivaCol búsqueda IA: Google Search: '
+        '${_useGoogleSearch ? 'activado' : 'desactivado'}',
+      );
       throw AiException.fromGenerationError(error, operation: 'búsqueda web');
     }
   }
@@ -504,19 +645,141 @@ class AiPropertySearchService {
     final directClassification =
         directUrl == null ? null : classifyAiPropertySearchUrl(directUrl);
     if (directClassification != null) {
-      if (kIsWeb) return _ResolvedLink(directClassification.uri, false);
+      if (directClassification.source != candidate.source) return null;
+      if (kIsWeb) {
+        return _ResolvedLink(
+          directClassification.uri,
+          false,
+          isListingPage: directClassification.isListingPage,
+        );
+      }
       return _checkLink(directClassification.uri, keepOnTimeout: true);
     }
 
     if (kIsWeb) return null;
-    final redirectUri = _matchingGroundingRedirect(candidate, chunks);
+    final redirectUri = _matchingGroundingRedirect(candidate, chunks) ??
+        _candidateGroundingRedirect(directUrl);
     if (redirectUri == null) return null;
     final resolved = await _checkLink(redirectUri, keepOnTimeout: false);
+    final resolvedClassification = resolved == null
+        ? null
+        : classifyAiPropertySearchUrl(resolved.uri.toString());
     if (resolved == null ||
-        classifyAiPropertySearchUrl(resolved.uri.toString()) == null) {
+        resolvedClassification == null ||
+        resolvedClassification.source != candidate.source) {
       return null;
     }
     return resolved;
+  }
+
+  AiPropertySearchListing _createListPageFallback(
+    AiPropertySearchCandidate candidate,
+    _ResolvedLink link,
+    String source,
+  ) {
+    return AiPropertySearchListing(
+      title: 'Resultados de ${candidate.operation} de '
+          '${candidate.propertyType.toLowerCase()} en Bogotá',
+      propertyType: candidate.propertyType,
+      operation: candidate.operation,
+      priceCop: null,
+      areaM2: null,
+      bedrooms: null,
+      bathrooms: null,
+      address: null,
+      neighborhood: null,
+      url: link.uri,
+      source: source,
+      missingData: const [],
+      linkVerified: link.verified,
+      approximateLocation: false,
+      latitude: null,
+      longitude: null,
+      isListingPage: true,
+    );
+  }
+
+  Future<({Uri uri, String title, bool verified})?>
+      _extractIndividualListingLink(Uri listingPage, String source) async {
+    if (kIsWeb) return null;
+    try {
+      final request = http.Request('GET', listingPage)
+        ..followRedirects = true
+        ..maxRedirects = 5;
+      final response = await _client.send(request).timeout(_requestTimeout);
+      final pageUri = response.request?.url ?? listingPage;
+      final pageClassification =
+          classifyAiPropertySearchUrl(pageUri.toString());
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          pageClassification == null ||
+          !pageClassification.isListingPage ||
+          pageClassification.source != source) {
+        await response.stream.listen((_) {}).cancel();
+        return null;
+      }
+
+      const maxHtmlBytes = 2 * 1024 * 1024;
+      final pageBytes = <int>[];
+      await for (final chunk in response.stream.timeout(_requestTimeout)) {
+        final remaining = maxHtmlBytes - pageBytes.length;
+        if (remaining <= 0) break;
+        pageBytes.addAll(chunk.take(remaining));
+        if (chunk.length >= remaining) break;
+      }
+      final document = html_parser.parse(
+        utf8.decode(pageBytes, allowMalformed: true),
+      );
+      final visited = <String>{};
+      var checkedLinks = 0;
+      for (final anchor in document.querySelectorAll('a[href]')) {
+        if (checkedLinks >= 2) break;
+        final href = anchor.attributes['href']?.trim();
+        if (href == null || href.isEmpty) continue;
+        final target = pageUri.resolve(href);
+        final classification = classifyAiPropertySearchUrl(target.toString());
+        if (classification == null ||
+            classification.isListingPage ||
+            classification.source != source ||
+            !visited.add(classification.uri.toString())) {
+          continue;
+        }
+
+        checkedLinks++;
+        final verified = await _checkLink(
+          classification.uri,
+          keepOnTimeout: true,
+          timeout: const Duration(seconds: 2),
+        );
+        if (verified == null ||
+            verified.isListingPage ||
+            _sourceForHost(verified.uri.host) != source) {
+          continue;
+        }
+        final title = anchor.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+        return (
+          uri: verified.uri,
+          title: title,
+          verified: verified.verified,
+        );
+      }
+      return null;
+    } on TimeoutException {
+      return null;
+    } on http.ClientException {
+      return null;
+    }
+  }
+
+  Uri? _candidateGroundingRedirect(String? rawUri) {
+    if (rawUri == null) return null;
+    final uri = Uri.tryParse(rawUri);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host != _vertexRedirectHost) {
+      return null;
+    }
+    return uri;
   }
 
   Uri? _matchingGroundingRedirect(
@@ -558,6 +821,7 @@ class AiPropertySearchService {
   Future<_ResolvedLink?> _checkLink(
     Uri uri, {
     required bool keepOnTimeout,
+    Duration timeout = _requestTimeout,
   }) async {
     try {
       var currentUri = uri;
@@ -565,7 +829,7 @@ class AiPropertySearchService {
         final request = http.Request('GET', currentUri)
           ..followRedirects = false
           ..headers['Range'] = 'bytes=0-0';
-        final response = await _client.send(request).timeout(_requestTimeout);
+        final response = await _client.send(request).timeout(timeout);
         final location = response.headers['location'];
         await response.stream.listen((_) {}).cancel();
 
@@ -584,19 +848,31 @@ class AiPropertySearchService {
           return null;
         }
         if (response.statusCode == 403 || response.statusCode == 429) {
-          return _ResolvedLink(currentUri, false);
+          return _ResolvedLink(
+            currentUri,
+            false,
+            isListingPage: classification.isListingPage,
+          );
         }
         if (response.statusCode >= 200 && response.statusCode < 300) {
           return _ResolvedLink(
-              currentUri, classification.matchesIndividualPattern);
+            currentUri,
+            classification.matchesIndividualPattern ||
+                classification.isListingPage,
+            isListingPage: classification.isListingPage,
+          );
         }
         return null;
       }
       return null;
     } on TimeoutException {
-      if (keepOnTimeout &&
-          classifyAiPropertySearchUrl(uri.toString()) != null) {
-        return _ResolvedLink(uri, false);
+      final classification = classifyAiPropertySearchUrl(uri.toString());
+      if (keepOnTimeout && classification != null) {
+        return _ResolvedLink(
+          uri,
+          false,
+          isListingPage: classification.isListingPage,
+        );
       }
       return null;
     } on http.ClientException {
